@@ -1028,6 +1028,11 @@ public:
     return LangAS::opencl_global;
   }
 
+  /// \brief Get address space to use for global variables.
+  virtual unsigned getGlobalAddrSpace() const {
+    return 0;
+  }
+
   /// \brief Check the target is valid after it is fully initialized.
   virtual bool validateTarget(DiagnosticsEngine &Diags) const {
     return true;

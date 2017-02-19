@@ -2328,6 +2328,11 @@ public:
   uint64_t getNullPointerValue(unsigned AS) const override {
     return AS != LangAS::opencl_local && AS != 0 ? 0 : ~0;
   }
+
+  /// \brief Get address space to use for global variables.
+  unsigned getGlobalAddrSpace() const {
+    return 1; // opencl_global.
+  }
 };
 
 const unsigned AMDGPUTargetInfo::AddrSpaceMap_[] = {

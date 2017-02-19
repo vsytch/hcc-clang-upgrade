@@ -767,10 +767,10 @@ llvm::DIType *CGDebugInfo::CreatePointerLikeType(llvm::dwarf::Tag Tag,
   if (Tag == llvm::dwarf::DW_TAG_reference_type ||
       Tag == llvm::dwarf::DW_TAG_rvalue_reference_type)
     return DBuilder.createReferenceType(Tag, getOrCreateType(PointeeTy, Unit),
-                                        Size, Align);
+                                        Size, Align, AS);
   else
     return DBuilder.createPointerType(getOrCreateType(PointeeTy, Unit), Size,
-                                      Align);
+                                      Align, AS);
 }
 
 llvm::DIType *CGDebugInfo::getOrCreateStructPtrType(StringRef Name,
@@ -1575,8 +1575,9 @@ llvm::DIType *CGDebugInfo::getOrCreateVTablePtrType(llvm::DIFile *Unit) {
   llvm::DITypeRefArray SElements = DBuilder.getOrCreateTypeArray(STy);
   llvm::DIType *SubTy = DBuilder.createSubroutineType(SElements);
   unsigned Size = Context.getTypeSize(Context.VoidPtrTy);
+  unsigned AS = CGM.getTarget().getGlobalAddrSpace();
   llvm::DIType *vtbl_ptr_type =
-      DBuilder.createPointerType(SubTy, Size, 0, "__vtbl_ptr_type");
+      DBuilder.createPointerType(SubTy, Size, 0, AS, "__vtbl_ptr_type");
   VTablePtrType = DBuilder.createPointerType(vtbl_ptr_type, Size);
   return VTablePtrType;
 }
@@ -1615,10 +1616,11 @@ void CGDebugInfo::CollectVTableInfo(const CXXRecordDecl *RD, llvm::DIFile *Unit,
     unsigned VSlotCount =
         VFTLayout.vtable_components().size() - CGM.getLangOpts().RTTIData;
     unsigned VTableWidth = PtrWidth * VSlotCount;
+    unsigned AS = CGM.getTarget().getGlobalAddrSpace();
 
     // Create a very wide void* type and insert it directly in the element list.
-    llvm::DIType *VTableType =
-        DBuilder.createPointerType(nullptr, VTableWidth, 0, "__vtbl_ptr_type");
+    llvm::DIType *VTableType = DBuilder.createPointerType(
+        nullptr, VTableWidth, 0, AS,"__vtbl_ptr_type");
     EltTys.push_back(VTableType);
 
     // The vptr is a pointer to this special vtable type.
