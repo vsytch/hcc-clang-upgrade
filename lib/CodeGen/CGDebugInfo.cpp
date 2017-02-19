@@ -3136,6 +3136,15 @@ void CGDebugInfo::CreateLexicalBlock(SourceLocation Loc) {
       getColumnNumber(CurLoc)));
 }
 
+void CGDebugInfo::appendAddressSpaceXDeref(
+    unsigned AddressSpace,
+    SmallVector<int64_t, 9> &Expr) const {
+  Expr.push_back(llvm::dwarf::DW_OP_constu);
+  Expr.push_back(AddressSpace);
+  Expr.push_back(llvm::dwarf::DW_OP_swap);
+  Expr.push_back(llvm::dwarf::DW_OP_xderef);
+}
+
 void CGDebugInfo::EmitLexicalBlockStart(CGBuilderTy &Builder,
                                         SourceLocation Loc) {
   // Set our current location.
@@ -3291,6 +3300,11 @@ void CGDebugInfo::EmitDeclare(const VarDecl *VD, llvm::Value *Storage,
     Flags |= llvm::DINode::FlagArtificial;
 
   auto Align = getDeclAlignIfRequired(VD, CGM.getContext());
+
+  // Append extended dereferencing mechanism for VD's address space.
+  unsigned AddressSpace = CGM.getContext().getTargetAddressSpace(VD->getType());
+  if (CGM.getTarget().targetSupportsMultipleAddressSpaces())
+    appendAddressSpaceXDeref(AddressSpace, Expr);
 
   // If this is the first argument and it is implicit then
   // give it an object pointer flag.
@@ -3715,10 +3729,18 @@ void CGDebugInfo::EmitGlobalVariable(llvm::GlobalVariable *Var,
            "unnamed non-anonymous struct or union?");
     GVE = CollectAnonRecordDecls(RD, Unit, LineNo, LinkageName, Var, DContext);
   } else {
+    // Append extended dereferencing mechanism for D's address space.
+    SmallVector<int64_t, 9> Expr;
+    unsigned AddressSpace =
+        CGM.getContext().getTargetAddressSpace(D->getType());
+    if (CGM.getTarget().targetSupportsMultipleAddressSpaces())
+      appendAddressSpaceXDeref(AddressSpace, Expr);
+
     auto Align = getDeclAlignIfRequired(D, CGM.getContext());
     GVE = DBuilder.createGlobalVariableExpression(
         DContext, DeclName, LinkageName, Unit, LineNo, getOrCreateType(T, Unit),
-        Var->hasLocalLinkage(), /*Expr=*/nullptr,
+        Var->hasLocalLinkage(),
+        Expr.empty() ? nullptr : DBuilder.createExpression(Expr),
         getOrCreateStaticDataMemberDeclarationOrNull(D), Align);
     Var->addDebugInfo(GVE);
   }

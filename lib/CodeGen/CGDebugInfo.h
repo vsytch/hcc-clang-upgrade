@@ -292,6 +292,11 @@ class CGDebugInfo {
   /// Create a new lexical block node and push it on the stack.
   void CreateLexicalBlock(SourceLocation Loc);
 
+  /// \brief Appends extended dereferencing mechanism for given \p AddressSpace
+  /// to complex expression \p Expr.
+  void appendAddressSpaceXDeref(unsigned AddressSpace,
+                                SmallVector<int64_t, 9> &Expr) const;
+
 public:
   CGDebugInfo(CodeGenModule &CGM);
   ~CGDebugInfo();

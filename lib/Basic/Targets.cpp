@@ -2333,6 +2333,12 @@ public:
   unsigned getGlobalAddrSpace() const {
     return 1; // opencl_global.
   }
+
+  /// \brief Returns true if subtarget supports more than one address space,
+  /// false otherwise.
+  bool targetSupportsMultipleAddressSpaces() const {
+    return true;
+  }
 };
 
 const unsigned AMDGPUTargetInfo::AddrSpaceMap_[] = {

@@ -1033,6 +1033,12 @@ public:
     return 0;
   }
 
+  /// \brief Returns true if subtarget supports more than one address space,
+  /// false otherwise.
+  virtual bool targetSupportsMultipleAddressSpaces() const {
+    return false;
+  }
+
   /// \brief Check the target is valid after it is fully initialized.
   virtual bool validateTarget(DiagnosticsEngine &Diags) const {
     return true;
