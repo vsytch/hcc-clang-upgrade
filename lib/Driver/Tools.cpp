@@ -4128,8 +4128,6 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
     CmdArgs.push_back("-famp-is-device");
     CmdArgs.push_back("-fno-builtin");
     CmdArgs.push_back("-fno-common");
-    //CmdArgs.push_back("-m32"); // added below using -triple
-    CmdArgs.push_back("-O2");
   } else if(IsCXXAMPCPUBackendJobAction(&JA)){
     // path to compile kernel codes on CPU
     CmdArgs.push_back("-famp-is-device");
@@ -5165,23 +5163,7 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
       CmdArgs.push_back("-O3");
       D.Diag(diag::warn_O4_is_O3);
     } else {
-      // C++ AMP-specific
-      if (IsCXXAMPBackendJobAction(&JA)) {
-        // ignore -O0 and -O1 for GPU compilation paths
-        // because inliner would not be enabled and will cause compilation fail
-        if (A->getOption().matches(options::OPT_O0)) {
-          D.Diag(diag::warn_drv_O0_ignored_for_GPU);
-        } else if (A->containsValue("1")) {
-          D.Diag(diag::warn_drv_O1_ignored_for_GPU);
-        } else {
-          // let all other optimization levels pass
-          A->render(Args, CmdArgs);
-        }
-      } else {
-
-        // normal cases
-        A->render(Args, CmdArgs);
-      }
+      A->render(Args, CmdArgs);
     }
   }
 
