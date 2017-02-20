@@ -2886,7 +2886,11 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
   llvm::Constant *Two = llvm::ConstantInt::get(PtrDiffTy, 2);
   VTable =
       llvm::ConstantExpr::getInBoundsGetElementPtr(CGM.Int8PtrTy, VTable, Two);
-  VTable = llvm::ConstantExpr::getBitCast(VTable, CGM.Int8PtrTy);
+  assert(VTable->getType()->isPointerTy() && "VTable type is not a pointer type");
+  unsigned AS = cast<llvm::PointerType>(VTable->getType())->getAddressSpace();
+  llvm::PointerType *I8PTy = (AS == CGM.Int8PtrTy->getAddressSpace()) ?
+    CGM.Int8PtrTy : CGM.Int8Ty->getPointerTo(AS);
+  VTable = llvm::ConstantExpr::getBitCast(VTable, I8PTy);
 
   Fields.push_back(VTable);
 }
