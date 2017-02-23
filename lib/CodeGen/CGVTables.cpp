@@ -546,13 +546,8 @@ void CodeGenVTables::addVTableComponent(
   case VTableComponent::CK_OffsetToTop:
     return addOffsetConstant(component.getOffsetToTop());
 
-  case VTableComponent::CK_RTTI: {
-    assert(rtti->getType()->isPointerTy() && "rtti is not of pointer type");
-    unsigned AS = cast<llvm::PointerType>(rtti->getType())->getAddressSpace();
-    llvm::PointerType *I8PTy = (AS == CGM.Int8PtrTy->getAddressSpace()) ?
-      CGM.Int8PtrTy : CGM.Int8Ty->getPointerTo(AS);
-    return builder.add(llvm::ConstantExpr::getBitCast(rtti, I8PTy));
-  }
+  case VTableComponent::CK_RTTI:
+    return builder.add(llvm::ConstantExpr::getPointerCast(rtti, CGM.Int8PtrTy));
 
   case VTableComponent::CK_FunctionPointer:
   case VTableComponent::CK_CompleteDtorPointer:
@@ -596,7 +591,7 @@ void CodeGenVTables::addVTableComponent(
       llvm::Constant *fn = CGM.CreateRuntimeFunction(fnTy, name);
       if (auto f = dyn_cast<llvm::Function>(fn))
         f->setUnnamedAddr(llvm::GlobalValue::UnnamedAddr::Global);
-      return llvm::ConstantExpr::getBitCast(fn, CGM.Int8PtrTy);
+      return llvm::ConstantExpr::getPointerCast(fn, CGM.Int8PtrTy);
     };
 
     llvm::Constant *fnPtr;
@@ -630,11 +625,7 @@ void CodeGenVTables::addVTableComponent(
       fnPtr = CGM.GetAddrOfFunction(GD, fnTy, /*ForVTable=*/true);
     }
 
-    assert(fnPtr->getType()->isPointerTy() && "fnPtr is not of pointer type");
-    unsigned AS = cast<llvm::PointerType>(fnPtr->getType())->getAddressSpace();
-    llvm::PointerType *I8PTy = (AS == CGM.Int8PtrTy->getAddressSpace()) ?
-      CGM.Int8PtrTy : CGM.Int8Ty->getPointerTo(AS);
-    fnPtr = llvm::ConstantExpr::getBitCast(fnPtr, I8PTy);
+    fnPtr = llvm::ConstantExpr::getPointerCast(fnPtr, CGM.Int8PtrTy);
     builder.add(fnPtr);
     return;
   }

@@ -48,6 +48,7 @@
 #include "llvm/ADT/Triple.h"
 #include "llvm/IR/CallSite.h"
 #include "llvm/IR/CallingConv.h"
+#include "llvm/IR/Constants.h"
 #include "llvm/IR/DataLayout.h"
 #include "llvm/IR/Intrinsics.h"
 #include "llvm/IR/LLVMContext.h"
@@ -762,7 +763,7 @@ void CodeGenModule::EmitCtorList(CtorList &Fns, const char *GlobalName) {
     ctor.addInt(Int32Ty, I.Priority);
     ctor.add(llvm::ConstantExpr::getBitCast(I.Initializer, CtorPFTy));
     if (I.AssociatedData)
-      ctor.add(llvm::ConstantExpr::getBitCast(I.AssociatedData, VoidPtrTy));
+      ctor.add(llvm::ConstantExpr::getPointerCast(I.AssociatedData, VoidPtrTy));
     else
       ctor.addNullPointer(VoidPtrTy);
     ctor.finishAndAddTo(ctors);
@@ -1424,9 +1425,9 @@ llvm::Constant *CodeGenModule::EmitAnnotateAttr(llvm::GlobalValue *GV,
   llvm::PointerType *I8PTy = (AS == Int8PtrTy->getAddressSpace()) ?
     Int8PtrTy : Int8Ty->getPointerTo(AS);
   llvm::Constant *Fields[4] = {
-    llvm::ConstantExpr::getBitCast(GV, I8PTy),
-    llvm::ConstantExpr::getBitCast(AnnoGV, I8PTy),
-    llvm::ConstantExpr::getBitCast(UnitGV, I8PTy),
+    llvm::ConstantExpr::getPointerCast(GV, I8PTy),
+    llvm::ConstantExpr::getPointerCast(AnnoGV, I8PTy),
+    llvm::ConstantExpr::getPointerCast(UnitGV, I8PTy),
     LineNoCst
   };
   return llvm::ConstantStruct::getAnon(Fields);
@@ -1553,7 +1554,7 @@ ConstantAddress CodeGenModule::GetWeakRefReference(const ValueDecl *VD) {
   llvm::GlobalValue *Entry = GetGlobalValue(AA->getAliasee());
   if (Entry) {
     unsigned AS = getContext().getTargetAddressSpace(VD->getType());
-    auto Ptr = llvm::ConstantExpr::getBitCast(Entry, DeclTy->getPointerTo(AS));
+    auto Ptr = llvm::ConstantExpr::getPointerCast(Entry, DeclTy->getPointerTo(AS));
     return ConstantAddress(Ptr, Alignment);
   }
 
@@ -1867,19 +1868,29 @@ void CodeGenModule::CompleteDIClassType(const CXXMethodDecl* D) {
 }
 
 static bool isWhiteListForHCC(const ValueDecl* D) {
-  // let global variables with "hcc_global" address space to pass
-  if (isa<VarDecl>(D) &&
-      D->getType().getAddressSpace() == LangAS::hcc_global)
+  // let kernels and functions marked with restrict(amp) to pass
+  if (D->hasAttr<CXXAMPRestrictAMPAttr>() ||
+      D->hasAttr<HCGridLaunchAttr>())
+    return true;
+
+  // let __device global variables to pass
+  if (isa<VarDecl>(D) && D->hasAttr<HCCGlobalAttr>())
     return true;
 
   // the remaining ones must be functions
   // be selective about functions to pass
 
   // C++11 atomic functions are allowed to pass
+  // C++11 functional operators are allowed to pass
   const CXXMethodDecl* MethodD = dyn_cast<CXXMethodDecl>(D);
   if (MethodD) {
     StringRef ClassName = MethodD->getParent()->getName();
-    if (ClassName.find("__atomic_base") != StringRef::npos) {
+    if (ClassName.find("__atomic_base") != StringRef::npos ||
+        ClassName.find("plus") != StringRef::npos ||
+        ClassName.find("logical_or") != StringRef::npos ||
+        ClassName.find("logical_and") != StringRef::npos ||
+        ClassName.find("unique_ptr") != StringRef::npos ||
+        ClassName.find("compressed_pair") != StringRef::npos) {
       return true;
     }
   }
@@ -1907,10 +1918,7 @@ void CodeGenModule::EmitGlobalDefinition(GlobalDecl GD, llvm::GlobalValue *GV) {
   if (LangOpts.CPlusPlusAMP && !CodeGenOpts.AMPCPU) {
     if (CodeGenOpts.AMPIsDevice) {
       // If -famp-is-device switch is on, we are in GPU build path.
-      if (!D->hasAttr<CXXAMPRestrictAMPAttr>() && !D->hasAttr<HCGridLaunchAttr>() &&
-          // for variables and functions not qualified with restrict(amp),
-          // be selective about which ones to be emitted in HCC kernel path
-          !isWhiteListForHCC(D))
+      if (!isWhiteListForHCC(D))
         return;
     } else {
       if (D->hasAttr<CXXAMPRestrictAMPAttr>()&&
@@ -2146,7 +2154,7 @@ llvm::Constant *CodeGenModule::GetAddrOfFunction(GlobalDecl GD,
   }
 
   StringRef MangledName = getMangledName(GD);
-  return GetOrCreateLLVMFunction(MangledName, Ty, GD, ForVTable, DontDefer,
+  auto *F= GetOrCreateLLVMFunction(MangledName, Ty, GD, ForVTable, DontDefer,
                                  /*IsThunk=*/false, llvm::AttributeSet(),
                                  IsForDefinition);
 }
@@ -2304,10 +2312,6 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
       }
     }
 
-    // Make sure the result is of the correct type.
-    if (Entry->getType()->getAddressSpace() != Ty->getAddressSpace())
-      return llvm::ConstantExpr::getAddrSpaceCast(Entry, Ty);
-
     // (If global is requested for a definition, we always need to create a new
     // global, not just return a bitcast.)
     if (!IsForDefinition)
@@ -2327,7 +2331,7 @@ CodeGenModule::GetOrCreateLLVMGlobal(StringRef MangledName,
 
     if (!Entry->use_empty()) {
       llvm::Constant *NewPtrForOldDecl =
-          llvm::ConstantExpr::getBitCast(GV, Entry->getType());
+          llvm::ConstantExpr::getPointerCast(GV, Entry->getType());
       Entry->replaceAllUsesWith(NewPtrForOldDecl);
     }
 
@@ -2438,7 +2442,7 @@ CodeGenModule::CreateOrReplaceCXXRuntimeVariable(StringRef Name,
     
     if (!OldGV->use_empty()) {
       llvm::Constant *NewPtrForOldDecl =
-      llvm::ConstantExpr::getBitCast(GV, OldGV->getType());
+      llvm::ConstantExpr::getPointerCast(GV, OldGV->getType());
       OldGV->replaceAllUsesWith(NewPtrForOldDecl);
     }
     
@@ -2466,13 +2470,7 @@ llvm::Constant *CodeGenModule::GetAddrOfGlobalVar(const VarDecl *D,
   if (!Ty)
     Ty = getTypes().ConvertTypeForMem(ASTTy);
 
-  llvm::PointerType *PTy;
-
-  if (LangOpts.CPlusPlusAMP && LangOpts.DevicePath) {
-    PTy = llvm::PointerType::get(Ty, getContext().getTargetAddressSpace(LangAS::hcc_global));
-  } else {
-    PTy = llvm::PointerType::get(Ty, getContext().getTargetAddressSpace(ASTTy));
-  }
+  llvm::PointerType *PTy = llvm::PointerType::get(Ty, getContext().getTargetAddressSpace(ASTTy));
 
   StringRef MangledName = getMangledName(D);
   return GetOrCreateLLVMGlobal(MangledName, PTy, D, IsForDefinition);
@@ -2526,7 +2524,7 @@ unsigned CodeGenModule::GetGlobalVarAddressSpace(const VarDecl *D,
   }
 
   if (D && LangOpts.CPlusPlusAMP && LangOpts.DevicePath) {
-    if (D->getType().getAddressSpace() == LangAS::hcc_tilestatic)
+    if (D->hasAttr<HCCTileStaticAttr>())
       AddrSpace = getContext().getTargetAddressSpace(LangAS::hcc_tilestatic);
     else
       AddrSpace = getContext().getTargetAddressSpace(LangAS::hcc_global);
@@ -2623,6 +2621,9 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
   if (getLangOpts().CUDA && getLangOpts().CUDAIsDevice &&
       D->hasAttr<CUDASharedAttr>())
     Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
+  else if (getLangOpts().CPlusPlusAMP && getLangOpts().DevicePath &&
+           D->hasAttr<HCCTileStaticAttr>())
+    Init = llvm::UndefValue::get(getTypes().ConvertType(ASTTy));
   else if (!InitExpr) {
     // This is a tentative definition; tentative definitions are
     // implicitly initialized with { 0 }.
@@ -2699,7 +2700,7 @@ void CodeGenModule::EmitGlobalVarDefinition(const VarDecl *D,
 
     // Replace all uses of the old global with the new global
     llvm::Constant *NewPtrForOldDecl =
-        llvm::ConstantExpr::getBitCast(GV, Entry->getType());
+        llvm::ConstantExpr::getPointerCast(GV, Entry->getType());
     Entry->replaceAllUsesWith(NewPtrForOldDecl);
 
     // Erase the old global, since it is no longer used.
@@ -3198,7 +3199,7 @@ void CodeGenModule::EmitAliasDefinition(GlobalDecl GD) {
     // Remove it and replace uses of it with the alias.
     GA->takeName(Entry);
 
-    Entry->replaceAllUsesWith(llvm::ConstantExpr::getBitCast(GA,
+    Entry->replaceAllUsesWith(llvm::ConstantExpr::getPointerCast(GA,
                                                           Entry->getType()));
     Entry->eraseFromParent();
   } else {
@@ -3416,7 +3417,7 @@ CodeGenModule::GetAddrOfConstantCFString(const StringLiteral *Literal) {
 
   if (isUTF16)
     // Cast the UTF16 string to the correct type.
-    Str = llvm::ConstantExpr::getBitCast(Str, Int8PtrTy);
+    Str = llvm::ConstantExpr::getPointerCast(Str, Int8PtrTy);
   Fields.add(Str);
 
   // String length.

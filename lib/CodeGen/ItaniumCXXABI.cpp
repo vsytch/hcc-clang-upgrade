@@ -1107,7 +1107,7 @@ void ItaniumCXXABI::emitThrow(CodeGenFunction &CGF, const CXXThrowExpr *E) {
     if (!Record->hasTrivialDestructor()) {
       CXXDestructorDecl *DtorD = Record->getDestructor();
       Dtor = CGM.getAddrOfCXXStructor(DtorD, StructorType::Complete);
-      Dtor = llvm::ConstantExpr::getBitCast(Dtor, CGM.Int8PtrTy);
+      Dtor = llvm::ConstantExpr::getPointerCast(Dtor, CGM.Int8PtrTy);
     }
   }
   if (!Dtor) Dtor = llvm::Constant::getNullValue(CGM.Int8PtrTy);
@@ -2164,7 +2164,7 @@ static void emitGlobalDtorWithCXAAtExit(CodeGenFunction &CGF,
 
   llvm::Value *args[] = {
     llvm::ConstantExpr::getBitCast(dtor, dtorTy),
-    llvm::ConstantExpr::getBitCast(addr, CGF.Int8PtrTy),
+    llvm::ConstantExpr::getPointerCast(addr, CGF.Int8PtrTy),
     handle
   };
   CGF.EmitNounwindRuntimeCall(atexit, args);
@@ -2557,7 +2557,7 @@ ItaniumRTTIBuilder::GetAddrOfExternalRTTIDescriptor(QualType Ty) {
     }
   }
 
-  return llvm::ConstantExpr::getBitCast(GV, CGM.Int8PtrTy);
+  return llvm::ConstantExpr::getPointerCast(GV, CGM.Int8PtrTy);
 }
 
 /// TypeInfoIsInStandardLibrary - Given a builtin type, returns whether the type
@@ -2886,11 +2886,7 @@ void ItaniumRTTIBuilder::BuildVTablePointer(const Type *Ty) {
   llvm::Constant *Two = llvm::ConstantInt::get(PtrDiffTy, 2);
   VTable =
       llvm::ConstantExpr::getInBoundsGetElementPtr(CGM.Int8PtrTy, VTable, Two);
-  assert(VTable->getType()->isPointerTy() && "VTable type is not a pointer type");
-  unsigned AS = cast<llvm::PointerType>(VTable->getType())->getAddressSpace();
-  llvm::PointerType *I8PTy = (AS == CGM.Int8PtrTy->getAddressSpace()) ?
-    CGM.Int8PtrTy : CGM.Int8Ty->getPointerTo(AS);
-  VTable = llvm::ConstantExpr::getBitCast(VTable, I8PTy);
+  VTable = llvm::ConstantExpr::getPointerCast(VTable, CGM.Int8PtrTy);
 
   Fields.push_back(VTable);
 }
@@ -2963,7 +2959,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force,
     assert(!OldGV->hasAvailableExternallyLinkage() &&
            "available_externally typeinfos not yet implemented");
 
-    return llvm::ConstantExpr::getBitCast(OldGV, CGM.Int8PtrTy);
+    return llvm::ConstantExpr::getPointerCast(OldGV, CGM.Int8PtrTy);
   }
 
   // Check if there is already an external RTTI descriptor for this type.
@@ -2999,11 +2995,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force,
     TypeNameField =
         llvm::ConstantExpr::getIntToPtr(TypeNameField, CGM.Int8PtrTy);
   } else {
-    assert(TypeName->getType()->isPointerTy() && "VTable type is not a pointer type");
-    unsigned AS = cast<llvm::PointerType>(TypeName->getType())->getAddressSpace();
-    llvm::PointerType *I8PTy = (AS == CGM.Int8PtrTy->getAddressSpace()) ?
-      CGM.Int8PtrTy : CGM.Int8Ty->getPointerTo(AS);
-    TypeNameField = llvm::ConstantExpr::getBitCast(TypeName, I8PTy);
+    TypeNameField = llvm::ConstantExpr::getPointerCast(TypeName, CGM.Int8PtrTy);
   }
   Fields.push_back(TypeNameField);
 
@@ -3157,11 +3149,7 @@ llvm::Constant *ItaniumRTTIBuilder::BuildTypeInfo(QualType Ty, bool Force,
     }
   }
 
-  assert(GV->getType()->isPointerTy() && "GV is not of pointer type");
-  unsigned AS = cast<llvm::PointerType>(GV->getType())->getAddressSpace();
-  llvm::PointerType *I8PTy = (AS == CGM.Int8PtrTy->getAddressSpace()) ?
-    CGM.Int8PtrTy : CGM.Int8Ty->getPointerTo(AS);
-  return llvm::ConstantExpr::getBitCast(GV, I8PTy);
+  return llvm::ConstantExpr::getPointerCast(GV, CGM.Int8PtrTy);
 }
 
 /// BuildObjCObjectTypeInfo - Build the appropriate kind of type_info
