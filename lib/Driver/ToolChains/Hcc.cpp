@@ -69,6 +69,7 @@ void HCC::HCKernelAssemble::ConstructJob(Compilation &C, const JobAction &JA,
   assert(Inputs.size() == 1 && "Unable to handle multiple inputs.");
 
   ArgStringList CmdArgs;
+  CmdArgs.push_back(Args.MakeArgString(getToolChain().GetProgramPath("hc-kernel-assemble.py")));
   for (InputInfoList::const_iterator
          it = Inputs.begin(), ie = Inputs.end(); it != ie; ++it) {
     const InputInfo &II = *it;
@@ -84,7 +85,7 @@ void HCC::HCKernelAssemble::ConstructJob(Compilation &C, const JobAction &JA,
     Output.getInputArg().renderAsInput(Args, CmdArgs);
 
   // locate where the command is
-  const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("hc-kernel-assemble"));
+  const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("python"));
 
   C.addCommand(llvm::make_unique<Command>(JA, *this, Exec, CmdArgs, Inputs));
 }
@@ -97,6 +98,7 @@ void HCC::HCHostAssemble::ConstructJob(Compilation &C, const JobAction &JA,
   assert(Inputs.size() == 1 && "Unable to handle multiple inputs.");
 
   ArgStringList CmdArgs;
+  CmdArgs.push_back(Args.MakeArgString(getToolChain().GetProgramPath("hc-host-assemble.py")));
   for (InputInfoList::const_iterator
          it = Inputs.begin(), ie = Inputs.end(); it != ie; ++it) {
     const InputInfo &II = *it;
@@ -114,7 +116,7 @@ void HCC::HCHostAssemble::ConstructJob(Compilation &C, const JobAction &JA,
   // decide which options gets passed through
   HCPassOptions(Args, CmdArgs);
 
-  const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("hc-host-assemble"));
+  const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("python"));
 
   C.addCommand(llvm::make_unique<Command>(JA, *this, Exec, CmdArgs, Inputs));
 }
@@ -127,6 +129,7 @@ void HCC::CXXAMPAssemble::ConstructJob(Compilation &C, const JobAction &JA,
   assert(Inputs.size() == 1 && "Unable to handle multiple inputs.");
 
   ArgStringList CmdArgs;
+  CmdArgs.push_back(Args.MakeArgString(getToolChain().GetProgramPath("clamp-assemble.py")));
   for (InputInfoList::const_iterator
          it = Inputs.begin(), ie = Inputs.end(); it != ie; ++it) {
     const InputInfo &II = *it;
@@ -141,7 +144,7 @@ void HCC::CXXAMPAssemble::ConstructJob(Compilation &C, const JobAction &JA,
   else
     Output.getInputArg().renderAsInput(Args, CmdArgs);
 
-  const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("clamp-assemble"));
+  const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("python"));
 
   C.addCommand(llvm::make_unique<Command>(JA, *this, Exec, CmdArgs, Inputs));
 }
@@ -168,8 +171,9 @@ namespace
         void operator()(std::FILE* p)
         {
             if (p) {
-                status = pclose(p);
-                status = WIFEXITED(status) ? WEXITSTATUS(status) : status;
+                //Add windows support
+                //status = pclose(p);
+                //status = WIFEXITED(status) ? WEXITSTATUS(status) : status;
             }
         }
     };
@@ -183,34 +187,34 @@ namespace
         //            agents present rocm_agent_enumerator returns the set
         //            formed from their union, including gfx000.
         std::vector<std::string> r;
+        //add windows support
+        // const char* tmp = std::getenv("ROCM_ROOT");
+        // const char* rocm = tmp ? tmp : "/opt/rocm";
 
-        const char* tmp = std::getenv("ROCM_ROOT");
-        const char* rocm = tmp ? tmp : "/opt/rocm";
+        // const auto e = c.getSysRoot() + rocm + "/bin/rocm_agent_enumerator";
 
-        const auto e = c.getSysRoot() + rocm + "/bin/rocm_agent_enumerator";
+        // if (!tc.getVFS().exists(e)) return r;
 
-        if (!tc.getVFS().exists(e)) return r;
+        // Process_deleter d;
+        // std::unique_ptr<std::FILE, Process_deleter> pipe{
+        //     popen((e.str() + " --type GPU").c_str(), "r"), d};
 
-        Process_deleter d;
-        std::unique_ptr<std::FILE, Process_deleter> pipe{
-            popen((e.str() + " --type GPU").c_str(), "r"), d};
+        // if (!pipe) return r;
 
-        if (!pipe) return r;
+        // static constexpr std::size_t buf_sz = 16u;
+        // std::array<char, buf_sz> buf = {{}};
+        // while (std::fgets(buf.data(), buf.size(), pipe.get())) {
+        //     r.emplace_back(buf.data());
+        // }
 
-        static constexpr std::size_t buf_sz = 16u;
-        std::array<char, buf_sz> buf = {{}};
-        while (std::fgets(buf.data(), buf.size(), pipe.get())) {
-            r.emplace_back(buf.data());
-        }
+        // for (auto&& x : r) { // fgets copies the newline.
+        //     x.erase(std::remove(x.begin(), x.end(), '\n'), x.end());
+        // }
 
-        for (auto&& x : r) { // fgets copies the newline.
-            x.erase(std::remove(x.begin(), x.end(), '\n'), x.end());
-        }
-
-        if (r.size() > 1) {
-            std::sort(r.rbegin(), r.rend());
-            r.pop_back(); // Remove null-agent.
-        }
+        // if (r.size() > 1) {
+        //     std::sort(r.rbegin(), r.rend());
+        //     r.pop_back(); // Remove null-agent.
+        // }
 
         return r;
     }
@@ -281,9 +285,14 @@ void HCC::CXXAMPLink::ConstructJob(
     const char *LinkingOutput) const
 {
     ArgStringList CmdArgs;
+    CmdArgs.push_back(Args.MakeArgString(getToolChain().GetProgramPath("clamp-link.py")));
 
     // add verbose flag to linker script if clang++ is invoked with --verbose flag
-    if (Args.hasArg(options::OPT_v)) CmdArgs.push_back("--verbose");
+    if (Args.hasArg(options::OPT_v))
+        CmdArgs.push_back("--verbose");
+
+    if (Args.hasArg(options::OPT_gcodeview))
+        CmdArgs.push_back("-debug");
 
     // Reverse translate the -lstdc++ option
     // Or add -lstdc++ when running on RHEL 7 or CentOS 7
@@ -333,8 +342,42 @@ void HCC::CXXAMPLink::ConstructJob(
     }
 
     // pass inputs to gnu ld for initial processing
-    Linker::ConstructLinkerJob(
-        C, JA, Output, Inputs, Args, LinkingOutput, CmdArgs);
+    //Linker::ConstructLinkerJob(
+    //    C, JA, Output, Inputs, Args, LinkingOutput, CmdArgs);
+
+    if (Output.isFilename())
+        CmdArgs.push_back(
+            Args.MakeArgString(std::string("-out:") + Output.getFilename()));
+
+    CmdArgs.push_back("-nologo");
+  
+    Args.AddAllArgValues(CmdArgs, options::OPT__SLASH_link);
+
+    // Add filenames, libraries, and other linker inputs.
+    for (const auto &Input : Inputs) {
+        if (Input.isFilename()) {
+            CmdArgs.push_back(Input.getFilename());
+            continue;
+        }
+
+        const Arg &A = Input.getInputArg();
+
+        // Render -l options differently for the MSVC linker.
+        if (A.getOption().matches(options::OPT_l)) {
+            StringRef Lib = A.getValue();
+            const char *LinkLibArg;
+            if (Lib.endswith(".lib"))
+                LinkLibArg = Args.MakeArgString(Lib);
+            else
+                LinkLibArg = Args.MakeArgString(Lib + ".lib");
+            CmdArgs.push_back(LinkLibArg);
+            continue;
+        }
+
+        // Otherwise, this is some other kind of linker input option like -Wl, -z,
+        // or -L. Render it, even if MSVC doesn't understand it.
+        A.renderAsInput(Args, CmdArgs);
+    }
 
     auto ClampArgs = CmdArgs;
     if (Args.hasArg(options::OPT_hcc_extra_libs_EQ)) {
@@ -345,7 +388,7 @@ void HCC::CXXAMPLink::ConstructJob(
       }
     }
 
-  const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("clamp-link"));
+  const char *Exec = Args.MakeArgString(getToolChain().GetProgramPath("python"));
 
   C.addCommand(llvm::make_unique<Command>(JA, *this, Exec, ClampArgs, Inputs));
 }
