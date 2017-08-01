@@ -2818,7 +2818,15 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // argument parsing.
   if (Args.hasArg(options::OPT_gcodeview) || EmitCodeView) {
     // DwarfVersion remains at 0 if no explicit choice was made.
-    CmdArgs.push_back("-gcodeview");
+    {
+      if (!(IsCXXAMPBackendJobAction(&JA) ||
+      IsHCAcceleratorPreprocessJobActionWithInputType(&JA, types::TY_HC_KERNEL) ||
+      IsHCAcceleratorPreprocessJobActionWithInputType(&JA, types::TY_CXX_AMP)))
+      {
+        CmdArgs.push_back("-gcodeview");
+        CmdArgs.push_back("-debug-info-kind=limited");
+      }
+    }
   } else if (DwarfVersion == 0 &&
              DebugInfoKind != codegenoptions::NoDebugInfo) {
     DwarfVersion = getToolChain().GetDefaultDwarfVersion();
@@ -2833,9 +2841,9 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
   // is fine for CodeView (and PDB).  In practice, however, the Microsoft
   // debuggers don't handle missing end columns well, so it's better not to
   // include any column info.
-  if (Args.hasFlag(options::OPT_gcolumn_info, options::OPT_gno_column_info,
-                   /*Default=*/ !IsPS4CPU && !(IsWindowsMSVC && EmitCodeView)))
-    CmdArgs.push_back("-dwarf-column-info");
+  //if (Args.hasFlag(options::OPT_gcolumn_info, options::OPT_gno_column_info,
+  //                 /*Default=*/ !IsPS4CPU && !(IsWindowsMSVC && EmitCodeView)))
+  //  CmdArgs.push_back("-dwarf-column-info");
 
   // FIXME: Move backend command line options to the module.
   // If -gline-tables-only is the last option it wins.
@@ -2868,10 +2876,16 @@ void Clang::ConstructJob(Compilation &C, const JobAction &JA,
                                     options::OPT_fno_standalone_debug,
                                     getToolChain().GetDefaultStandaloneDebug());
   if (DebugInfoKind == codegenoptions::LimitedDebugInfo && NeedFullDebug)
-    DebugInfoKind = codegenoptions::FullDebugInfo;
-  RenderDebugEnablingArgs(Args, CmdArgs, DebugInfoKind, DwarfVersion,
+  {
+    if (!(IsCXXAMPBackendJobAction(&JA) ||
+      IsHCAcceleratorPreprocessJobActionWithInputType(&JA, types::TY_HC_KERNEL) ||
+      IsHCAcceleratorPreprocessJobActionWithInputType(&JA, types::TY_CXX_AMP)))
+    {
+      DebugInfoKind = codegenoptions::FullDebugInfo;
+      RenderDebugEnablingArgs(Args, CmdArgs, DebugInfoKind, DwarfVersion,
                           DebuggerTuning);
-
+    }
+  }
   // -fdebug-macro turns on macro debug info generation.
   if (Args.hasFlag(options::OPT_fdebug_macro, options::OPT_fno_debug_macro,
                    false))
