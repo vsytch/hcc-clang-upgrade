@@ -24,7 +24,7 @@
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/ErrorHandling.h"
 #include "llvm/Support/raw_ostream.h"
-
+#include "ItaniumMangle.cpp"
 #define MANGLE_CHECKER 0
 
 #if MANGLE_CHECKER
@@ -144,7 +144,17 @@ void MangleContext::mangleName(const NamedDecl *D, raw_ostream &Out) {
     if (const ObjCMethodDecl *OMD = dyn_cast<ObjCMethodDecl>(D))
       mangleObjCMethodName(OMD, Out);
     else
-      mangleCXXName(D, Out);
+    {
+      if (D->getIdentifier() &&
+        (D->getIdentifier()->getName().str() == std::string("__cxxamp_trampoline")))
+      {
+        ItaniumMangleContextImpl imci(getASTContext(), ASTContext.getDiagnostics());
+        imci.mangleCXXName(D, Out);
+        return;
+      }
+      else
+        mangleCXXName(D, Out);  
+    }
     return;
   }
 
