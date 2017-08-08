@@ -147,11 +147,7 @@ void MangleContext::mangleName(const NamedDecl *D, raw_ostream &Out) {
     {
       if (D->getIdentifier() &&
         (D->getIdentifier()->getName().str() == std::string("__cxxamp_trampoline")))
-      {
-        ItaniumMangleContextImpl imci(getASTContext(), ASTContext.getDiagnostics());
-        imci.mangleCXXName(D, Out);
-        return;
-      }
+        ItaniumMangleContextImpl(getASTContext(), ASTContext.getDiagnostics()).mangleCXXName(D, Out);
       else
         mangleCXXName(D, Out);  
     }
