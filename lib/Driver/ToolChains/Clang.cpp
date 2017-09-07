@@ -37,7 +37,7 @@
 #include "llvm/Support/Process.h"
 #include "llvm/Support/TargetParser.h"
 #include "llvm/Support/YAMLParser.h"
-
+#include <iostream>
 #ifdef LLVM_ON_UNIX
 #include <unistd.h> // For getuid().
 #endif
@@ -4807,7 +4807,7 @@ void Clang::AddClangCLArgs(const ArgList &Args, types::ID InputType,
                            codegenoptions::DebugInfoKind *DebugInfoKind,
                            bool *EmitCodeView) const {
   unsigned RTOptionID = options::OPT__SLASH_MT;
-
+  std::cout << "AddClangCLArgs" << std::endl;
   if (Args.hasArg(options::OPT__SLASH_LDd))
     // The /LDd option implies /MTd. The dependent lib part can be overridden,
     // but defining _DEBUG is sticky.

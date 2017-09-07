@@ -78,7 +78,7 @@
 #if LLVM_ON_UNIX
 #include <unistd.h> // getpid
 #endif
-
+#include <iostream>
 using namespace clang::driver;
 using namespace clang;
 using namespace llvm::opt;
@@ -1696,8 +1696,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
                 Inputs.push_back(std::make_pair(types::TY_HC_KERNEL, A));
                 Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
               } else {
-                Inputs.push_back(std::make_pair(Ty, A));
                 Inputs.push_back(std::make_pair(types::TY_CXX_AMP, A));
+                Inputs.push_back(std::make_pair(Ty, A));
               }
             break;
 
@@ -1720,8 +1720,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
                 Inputs.push_back(std::make_pair(types::TY_HC_KERNEL, A));
                 Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
               } else {
-                Inputs.push_back(std::make_pair(Ty, A));
                 Inputs.push_back(std::make_pair(types::TY_CXX_AMP, A));
+                Inputs.push_back(std::make_pair(Ty, A));
               }
             break;
 
@@ -1733,8 +1733,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
                 Inputs.push_back(std::make_pair(types::TY_HC_KERNEL, A));
                 Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
               } else {
-                Inputs.push_back(std::make_pair(Ty, A));
                 Inputs.push_back(std::make_pair(types::TY_CXX_AMP, A));
+                Inputs.push_back(std::make_pair(Ty, A));
               }
             break;
 
@@ -1743,7 +1743,6 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
             break;
           }
         } else {
-
           // Standard compilation flow
           Inputs.push_back(std::make_pair(Ty, A));
         }
