@@ -12,30 +12,37 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "clang/Basic/Builtins.h"
-#include "clang/Basic/Cuda.h"
+#include "Targets.h"
+
+#include "Targets/AArch64.h"
+#include "Targets/AMDGPU.h"
+#include "Targets/ARM.h"
+#include "Targets/AVR.h"
+#include "Targets/BPF.h"
+#include "Targets/Hexagon.h"
+#include "Targets/Lanai.h"
+#include "Targets/Le64.h"
+#include "Targets/MSP430.h"
+#include "Targets/Mips.h"
+#include "Targets/NVPTX.h"
+#include "Targets/Nios2.h"
+#include "Targets/OSTargets.h"
+#include "Targets/PNaCl.h"
+#include "Targets/PPC.h"
+#include "Targets/SPIR.h"
+#include "Targets/Sparc.h"
+#include "Targets/SystemZ.h"
+#include "Targets/TCE.h"
+#include "Targets/WebAssembly.h"
+#include "Targets/X86.h"
+#include "Targets/XCore.h"
 #include "clang/Basic/Diagnostic.h"
-#include "clang/Basic/LangOptions.h"
-#include "clang/Basic/MacroBuilder.h"
-#include "clang/Basic/TargetBuiltins.h"
-#include "clang/Basic/TargetInfo.h"
-#include "clang/Basic/TargetOptions.h"
-#include "clang/Basic/Version.h"
-#include "clang/Frontend/CodeGenOptions.h"
-#include "llvm/ADT/APFloat.h"
-#include "llvm/ADT/STLExtras.h"
-#include "llvm/ADT/StringExtras.h"
-#include "llvm/ADT/StringRef.h"
-#include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Triple.h"
-#include "llvm/MC/MCSectionMachO.h"
-#include "llvm/Support/ErrorHandling.h"
-#include "llvm/Support/TargetParser.h"
-#include <algorithm>
-#include <memory>
 
 using namespace clang;
 
+namespace clang {
+namespace targets {
 //===----------------------------------------------------------------------===//
 //  Common code shared among targets.
 //===----------------------------------------------------------------------===//
@@ -43,8 +50,8 @@ using namespace clang;
 /// DefineStd - Define a macro name and standard variants.  For example if
 /// MacroName is "unix", then this will define "__unix", "__unix__", and "unix"
 /// when in GNU mode.
-static void DefineStd(MacroBuilder &Builder, StringRef MacroName,
-                      const LangOptions &Opts) {
+void DefineStd(MacroBuilder &Builder, StringRef MacroName,
+               const LangOptions &Opts) {
   assert(MacroName[0] != '_' && "Identifier should be in the user's namespace");
 
   // If in GNU mode (e.g. -std=gnu99 but not -std=c99) define the raw identifier
@@ -59,14 +66,14 @@ static void DefineStd(MacroBuilder &Builder, StringRef MacroName,
   Builder.defineMacro("__" + MacroName + "__");
 }
 
-static void defineCPUMacros(MacroBuilder &Builder, StringRef CPUName,
-                            bool Tuning = true) {
+void defineCPUMacros(MacroBuilder &Builder, StringRef CPUName, bool Tuning) {
   Builder.defineMacro("__" + CPUName);
   Builder.defineMacro("__" + CPUName + "__");
   if (Tuning)
     Builder.defineMacro("__tune_" + CPUName + "__");
 }
 
+<<<<<<< HEAD
 static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
                                   const TargetOptions &Opts);
 
@@ -4789,6 +4796,9 @@ public:
 };
 
 static void addCygMingDefines(const LangOptions &Opts, MacroBuilder &Builder) {
+=======
+void addCygMingDefines(const LangOptions &Opts, MacroBuilder &Builder) {
+>>>>>>> 243cf889c0894cdd9b495d3e0764c301b8bec7dd
   // Mingw and cygwin define __declspec(a) to __attribute__((a)).  Clang
   // supports __declspec natively under -fms-extensions, but we define a no-op
   // __declspec macro anyway for pre-processor compatibility.
@@ -4796,6 +4806,7 @@ static void addCygMingDefines(const LangOptions &Opts, MacroBuilder &Builder) {
     Builder.defineMacro("__declspec", "__declspec");
   else
     Builder.defineMacro("__declspec(a)", "__attribute__((a))");
+<<<<<<< HEAD
 
   if (!Opts.MicrosoftExt) {
     // Provide macros for all the calling convention keywords.  Provide both
@@ -8642,973 +8653,36 @@ public:
           << ABI << getTriple().str();
       return false;
     }
+=======
+>>>>>>> 243cf889c0894cdd9b495d3e0764c301b8bec7dd
 
-    // FIXME: It's valid to use N32/N64 on a mips/mipsel triple but the backend
-    //        can't handle this yet. It's better to fail here than on the
-    //        backend assertion.
-    if ((getTriple().getArch() == llvm::Triple::mips ||
-         getTriple().getArch() == llvm::Triple::mipsel) &&
-        (ABI == "n32" || ABI == "n64")) {
-      Diags.Report(diag::err_target_unsupported_abi_for_triple)
-          << ABI << getTriple().str();
-      return false;
+  if (!Opts.MicrosoftExt) {
+    // Provide macros for all the calling convention keywords.  Provide both
+    // single and double underscore prefixed variants.  These are available on
+    // x64 as well as x86, even though they have no effect.
+    const char *CCs[] = {"cdecl", "stdcall", "fastcall", "thiscall", "pascal"};
+    for (const char *CC : CCs) {
+      std::string GCCSpelling = "__attribute__((__";
+      GCCSpelling += CC;
+      GCCSpelling += "__))";
+      Builder.defineMacro(Twine("_") + CC, GCCSpelling);
+      Builder.defineMacro(Twine("__") + CC, GCCSpelling);
     }
-
-    return true;
   }
-};
-
-const Builtin::Info MipsTargetInfo::BuiltinInfo[] = {
-#define BUILTIN(ID, TYPE, ATTRS) \
-  { #ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr },
-#define LIBBUILTIN(ID, TYPE, ATTRS, HEADER) \
-  { #ID, TYPE, ATTRS, HEADER, ALL_LANGUAGES, nullptr },
-#include "clang/Basic/BuiltinsMips.def"
-};
-
-class PNaClTargetInfo : public TargetInfo {
-public:
-  PNaClTargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
-      : TargetInfo(Triple) {
-    this->LongAlign = 32;
-    this->LongWidth = 32;
-    this->PointerAlign = 32;
-    this->PointerWidth = 32;
-    this->IntMaxType = TargetInfo::SignedLongLong;
-    this->Int64Type = TargetInfo::SignedLongLong;
-    this->DoubleAlign = 64;
-    this->LongDoubleWidth = 64;
-    this->LongDoubleAlign = 64;
-    this->SizeType = TargetInfo::UnsignedInt;
-    this->PtrDiffType = TargetInfo::SignedInt;
-    this->IntPtrType = TargetInfo::SignedInt;
-    this->RegParmMax = 0; // Disallow regparm
-  }
-
-  void getArchDefines(const LangOptions &Opts, MacroBuilder &Builder) const {
-    Builder.defineMacro("__le32__");
-    Builder.defineMacro("__pnacl__");
-  }
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    getArchDefines(Opts, Builder);
-  }
-  bool hasFeature(StringRef Feature) const override {
-    return Feature == "pnacl";
-  }
-  ArrayRef<Builtin::Info> getTargetBuiltins() const override { return None; }
-  BuiltinVaListKind getBuiltinVaListKind() const override {
-    return TargetInfo::PNaClABIBuiltinVaList;
-  }
-  ArrayRef<const char *> getGCCRegNames() const override;
-  ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const override;
-  bool validateAsmConstraint(const char *&Name,
-                             TargetInfo::ConstraintInfo &Info) const override {
-    return false;
-  }
-
-  const char *getClobbers() const override {
-    return "";
-  }
-};
-
-ArrayRef<const char *> PNaClTargetInfo::getGCCRegNames() const {
-  return None;
 }
 
-ArrayRef<TargetInfo::GCCRegAlias> PNaClTargetInfo::getGCCRegAliases() const {
-  return None;
+void addMinGWDefines(const LangOptions &Opts, MacroBuilder &Builder) {
+  Builder.defineMacro("__MSVCRT__");
+  Builder.defineMacro("__MINGW32__");
+  addCygMingDefines(Opts, Builder);
 }
-
-// We attempt to use PNaCl (le32) frontend and Mips32EL backend.
-class NaClMips32TargetInfo : public MipsTargetInfo {
-public:
-  NaClMips32TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
-      : MipsTargetInfo(Triple, Opts) {}
-
-  BuiltinVaListKind getBuiltinVaListKind() const override {
-    return TargetInfo::PNaClABIBuiltinVaList;
-  }
-};
-
-class Le64TargetInfo : public TargetInfo {
-  static const Builtin::Info BuiltinInfo[];
-
-public:
-  Le64TargetInfo(const llvm::Triple &Triple, const TargetOptions &)
-      : TargetInfo(Triple) {
-    NoAsmVariants = true;
-    LongWidth = LongAlign = PointerWidth = PointerAlign = 64;
-    MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 64;
-    resetDataLayout("e-m:e-v128:32-v16:16-v32:32-v96:32-n8:16:32:64-S128");
-  }
-
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    DefineStd(Builder, "unix", Opts);
-    defineCPUMacros(Builder, "le64", /*Tuning=*/false);
-    Builder.defineMacro("__ELF__");
-  }
-  ArrayRef<Builtin::Info> getTargetBuiltins() const override {
-    return llvm::makeArrayRef(BuiltinInfo,
-                          clang::Le64::LastTSBuiltin - Builtin::FirstTSBuiltin);
-  }
-  BuiltinVaListKind getBuiltinVaListKind() const override {
-    return TargetInfo::PNaClABIBuiltinVaList;
-  }
-  const char *getClobbers() const override { return ""; }
-  ArrayRef<const char *> getGCCRegNames() const override {
-    return None;
-  }
-  ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const override {
-    return None;
-  }
-  bool validateAsmConstraint(const char *&Name,
-                             TargetInfo::ConstraintInfo &Info) const override {
-    return false;
-  }
-
-  bool hasProtectedVisibility() const override { return false; }
-};
-
-class WebAssemblyTargetInfo : public TargetInfo {
-  static const Builtin::Info BuiltinInfo[];
-
-  enum SIMDEnum {
-    NoSIMD,
-    SIMD128,
-  } SIMDLevel;
-
-public:
-  explicit WebAssemblyTargetInfo(const llvm::Triple &T, const TargetOptions &)
-      : TargetInfo(T), SIMDLevel(NoSIMD) {
-    NoAsmVariants = true;
-    SuitableAlign = 128;
-    LargeArrayMinWidth = 128;
-    LargeArrayAlign = 128;
-    SimdDefaultAlign = 128;
-    SigAtomicType = SignedLong;
-    LongDoubleWidth = LongDoubleAlign = 128;
-    LongDoubleFormat = &llvm::APFloat::IEEEquad();
-    SizeType = UnsignedInt;
-    PtrDiffType = SignedInt;
-    IntPtrType = SignedInt;
-  }
-
-protected:
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    defineCPUMacros(Builder, "wasm", /*Tuning=*/false);
-    if (SIMDLevel >= SIMD128)
-      Builder.defineMacro("__wasm_simd128__");
-  }
-
-private:
-  bool
-  initFeatureMap(llvm::StringMap<bool> &Features, DiagnosticsEngine &Diags,
-                 StringRef CPU,
-                 const std::vector<std::string> &FeaturesVec) const override {
-    if (CPU == "bleeding-edge")
-      Features["simd128"] = true;
-    return TargetInfo::initFeatureMap(Features, Diags, CPU, FeaturesVec);
-  }
-  bool hasFeature(StringRef Feature) const final {
-    return llvm::StringSwitch<bool>(Feature)
-        .Case("simd128", SIMDLevel >= SIMD128)
-        .Default(false);
-  }
-  bool handleTargetFeatures(std::vector<std::string> &Features,
-                            DiagnosticsEngine &Diags) final {
-    for (const auto &Feature : Features) {
-      if (Feature == "+simd128") {
-        SIMDLevel = std::max(SIMDLevel, SIMD128);
-        continue;
-      }
-      if (Feature == "-simd128") {
-        SIMDLevel = std::min(SIMDLevel, SIMDEnum(SIMD128 - 1));
-        continue;
-      }
-
-      Diags.Report(diag::err_opt_not_valid_with_opt) << Feature
-                                                     << "-target-feature";
-      return false;
-    }
-    return true;
-  }
-  bool setCPU(const std::string &Name) final {
-    return llvm::StringSwitch<bool>(Name)
-              .Case("mvp",           true)
-              .Case("bleeding-edge", true)
-              .Case("generic",       true)
-              .Default(false);
-  }
-  ArrayRef<Builtin::Info> getTargetBuiltins() const final {
-    return llvm::makeArrayRef(BuiltinInfo,
-                   clang::WebAssembly::LastTSBuiltin - Builtin::FirstTSBuiltin);
-  }
-  BuiltinVaListKind getBuiltinVaListKind() const final {
-    return VoidPtrBuiltinVaList;
-  }
-  ArrayRef<const char *> getGCCRegNames() const final {
-    return None;
-  }
-  ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const final {
-    return None;
-  }
-  bool
-  validateAsmConstraint(const char *&Name,
-                        TargetInfo::ConstraintInfo &Info) const final {
-    return false;
-  }
-  const char *getClobbers() const final { return ""; }
-  bool isCLZForZeroUndef() const final { return false; }
-  bool hasInt128Type() const final { return true; }
-  IntType getIntTypeByWidth(unsigned BitWidth,
-                            bool IsSigned) const final {
-    // WebAssembly prefers long long for explicitly 64-bit integers.
-    return BitWidth == 64 ? (IsSigned ? SignedLongLong : UnsignedLongLong)
-                          : TargetInfo::getIntTypeByWidth(BitWidth, IsSigned);
-  }
-  IntType getLeastIntTypeByWidth(unsigned BitWidth,
-                                 bool IsSigned) const final {
-    // WebAssembly uses long long for int_least64_t and int_fast64_t.
-    return BitWidth == 64
-               ? (IsSigned ? SignedLongLong : UnsignedLongLong)
-               : TargetInfo::getLeastIntTypeByWidth(BitWidth, IsSigned);
-  }
-};
-
-const Builtin::Info WebAssemblyTargetInfo::BuiltinInfo[] = {
-#define BUILTIN(ID, TYPE, ATTRS) \
-  { #ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr },
-#define LIBBUILTIN(ID, TYPE, ATTRS, HEADER) \
-  { #ID, TYPE, ATTRS, HEADER, ALL_LANGUAGES, nullptr },
-#include "clang/Basic/BuiltinsWebAssembly.def"
-};
-
-class WebAssembly32TargetInfo : public WebAssemblyTargetInfo {
-public:
-  explicit WebAssembly32TargetInfo(const llvm::Triple &T,
-                                   const TargetOptions &Opts)
-      : WebAssemblyTargetInfo(T, Opts) {
-    MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 64;
-    resetDataLayout("e-m:e-p:32:32-i64:64-n32:64-S128");
-  }
-
-protected:
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    WebAssemblyTargetInfo::getTargetDefines(Opts, Builder);
-    defineCPUMacros(Builder, "wasm32", /*Tuning=*/false);
-  }
-};
-
-class WebAssembly64TargetInfo : public WebAssemblyTargetInfo {
-public:
-  explicit WebAssembly64TargetInfo(const llvm::Triple &T,
-                                   const TargetOptions &Opts)
-      : WebAssemblyTargetInfo(T, Opts) {
-    LongAlign = LongWidth = 64;
-    PointerAlign = PointerWidth = 64;
-    MaxAtomicPromoteWidth = MaxAtomicInlineWidth = 64;
-    SizeType = UnsignedLong;
-    PtrDiffType = SignedLong;
-    IntPtrType = SignedLong;
-    resetDataLayout("e-m:e-p:64:64-i64:64-n32:64-S128");
-  }
-
-protected:
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    WebAssemblyTargetInfo::getTargetDefines(Opts, Builder);
-    defineCPUMacros(Builder, "wasm64", /*Tuning=*/false);
-  }
-};
-
-const Builtin::Info Le64TargetInfo::BuiltinInfo[] = {
-#define BUILTIN(ID, TYPE, ATTRS)                                               \
-  { #ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr },
-#include "clang/Basic/BuiltinsLe64.def"
-};
-
-static const unsigned SPIRAddrSpaceMap[] = {
-    0, // Default
-    1, // opencl_global
-    3, // opencl_local
-    2, // opencl_constant
-    0, // opencl_private
-    4, // opencl_generic
-    0, // cuda_device
-    0, // cuda_constant
-    0, // cuda_shared
-    3, // hcc_tilestatic
-    4, // hcc_generic
-    1, // hcc_global
-};
-class SPIRTargetInfo : public TargetInfo {
-public:
-  SPIRTargetInfo(const llvm::Triple &Triple, const TargetOptions &)
-      : TargetInfo(Triple) {
-    assert(getTriple().getOS() == llvm::Triple::UnknownOS &&
-           "SPIR target must use unknown OS");
-    assert(getTriple().getEnvironment() == llvm::Triple::UnknownEnvironment &&
-           "SPIR target must use unknown environment type");
-    TLSSupported = false;
-    LongWidth = LongAlign = 64;
-    AddrSpaceMap = &SPIRAddrSpaceMap;
-    UseAddrSpaceMapMangling = true;
-    // Define available target features
-    // These must be defined in sorted order!
-    NoAsmVariants = true;
-  }
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    DefineStd(Builder, "SPIR", Opts);
-  }
-  bool hasFeature(StringRef Feature) const override {
-    return Feature == "spir";
-  }
-
-  ArrayRef<Builtin::Info> getTargetBuiltins() const override { return None; }
-  const char *getClobbers() const override { return ""; }
-  ArrayRef<const char *> getGCCRegNames() const override { return None; }
-  bool validateAsmConstraint(const char *&Name,
-                             TargetInfo::ConstraintInfo &info) const override {
-    return true;
-  }
-  ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const override {
-    return None;
-  }
-  BuiltinVaListKind getBuiltinVaListKind() const override {
-    return TargetInfo::VoidPtrBuiltinVaList;
-  }
-
-  CallingConvCheckResult checkCallingConvention(CallingConv CC) const override {
-    return (CC == CC_SpirFunction || CC == CC_OpenCLKernel) ? CCCR_OK
-                                                            : CCCR_Warning;
-  }
-
-  CallingConv getDefaultCallingConv(CallingConvMethodType MT) const override {
-    return CC_SpirFunction;
-  }
-
-  void setSupportedOpenCLOpts() override {
-    // Assume all OpenCL extensions and optional core features are supported
-    // for SPIR since it is a generic target.
-    getSupportedOpenCLOpts().supportAll();
-  }
-};
-
-class SPIR32TargetInfo : public SPIRTargetInfo {
-public:
-  SPIR32TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
-      : SPIRTargetInfo(Triple, Opts) {
-    PointerWidth = PointerAlign = 32;
-    SizeType = TargetInfo::UnsignedInt;
-    PtrDiffType = IntPtrType = TargetInfo::SignedInt;
-    resetDataLayout("e-p:32:32-i64:64-v16:16-v24:32-v32:32-v48:64-"
-                    "v96:128-v192:256-v256:256-v512:512-v1024:1024");
-  }
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    DefineStd(Builder, "SPIR32", Opts);
-  }
-};
-
-class SPIR64TargetInfo : public SPIRTargetInfo {
-public:
-  SPIR64TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
-      : SPIRTargetInfo(Triple, Opts) {
-    PointerWidth = PointerAlign = 64;
-    SizeType = TargetInfo::UnsignedLong;
-    PtrDiffType = IntPtrType = TargetInfo::SignedLong;
-    resetDataLayout("e-i64:64-v16:16-v24:32-v32:32-v48:64-"
-                    "v96:128-v192:256-v256:256-v512:512-v1024:1024");
-  }
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    DefineStd(Builder, "SPIR64", Opts);
-  }
-};
-
-class XCoreTargetInfo : public TargetInfo {
-  static const Builtin::Info BuiltinInfo[];
-public:
-  XCoreTargetInfo(const llvm::Triple &Triple, const TargetOptions &)
-      : TargetInfo(Triple) {
-    NoAsmVariants = true;
-    LongLongAlign = 32;
-    SuitableAlign = 32;
-    DoubleAlign = LongDoubleAlign = 32;
-    SizeType = UnsignedInt;
-    PtrDiffType = SignedInt;
-    IntPtrType = SignedInt;
-    WCharType = UnsignedChar;
-    WIntType = UnsignedInt;
-    UseZeroLengthBitfieldAlignment = true;
-    resetDataLayout("e-m:e-p:32:32-i1:8:32-i8:8:32-i16:16:32-i64:32"
-                    "-f64:32-a:0:32-n32");
-  }
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    Builder.defineMacro("__XS1B__");
-  }
-  ArrayRef<Builtin::Info> getTargetBuiltins() const override {
-    return llvm::makeArrayRef(BuiltinInfo,
-                           clang::XCore::LastTSBuiltin-Builtin::FirstTSBuiltin);
-  }
-  BuiltinVaListKind getBuiltinVaListKind() const override {
-    return TargetInfo::VoidPtrBuiltinVaList;
-  }
-  const char *getClobbers() const override {
-    return "";
-  }
-  ArrayRef<const char *> getGCCRegNames() const override {
-    static const char * const GCCRegNames[] = {
-      "r0",   "r1",   "r2",   "r3",   "r4",   "r5",   "r6",   "r7",
-      "r8",   "r9",   "r10",  "r11",  "cp",   "dp",   "sp",   "lr"
-    };
-    return llvm::makeArrayRef(GCCRegNames);
-  }
-  ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const override {
-    return None;
-  }
-  bool validateAsmConstraint(const char *&Name,
-                             TargetInfo::ConstraintInfo &Info) const override {
-    return false;
-  }
-  int getEHDataRegisterNumber(unsigned RegNo) const override {
-    // R0=ExceptionPointerRegister R1=ExceptionSelectorRegister
-    return (RegNo < 2)? RegNo : -1;
-  }
-  bool allowsLargerPreferedTypeAlignment() const override {
-    return false;
-  }
-};
-
-const Builtin::Info XCoreTargetInfo::BuiltinInfo[] = {
-#define BUILTIN(ID, TYPE, ATTRS) \
-  { #ID, TYPE, ATTRS, nullptr, ALL_LANGUAGES, nullptr },
-#define LIBBUILTIN(ID, TYPE, ATTRS, HEADER) \
-  { #ID, TYPE, ATTRS, HEADER, ALL_LANGUAGES, nullptr },
-#include "clang/Basic/BuiltinsXCore.def"
-};
-
-// x86_32 Android target
-class AndroidX86_32TargetInfo : public LinuxTargetInfo<X86_32TargetInfo> {
-public:
-  AndroidX86_32TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
-      : LinuxTargetInfo<X86_32TargetInfo>(Triple, Opts) {
-    SuitableAlign = 32;
-    LongDoubleWidth = 64;
-    LongDoubleFormat = &llvm::APFloat::IEEEdouble();
-  }
-};
-
-// x86_64 Android target
-class AndroidX86_64TargetInfo : public LinuxTargetInfo<X86_64TargetInfo> {
-public:
-  AndroidX86_64TargetInfo(const llvm::Triple &Triple, const TargetOptions &Opts)
-      : LinuxTargetInfo<X86_64TargetInfo>(Triple, Opts) {
-    LongDoubleFormat = &llvm::APFloat::IEEEquad();
-  }
-
-  bool useFloat128ManglingForLongDouble() const override {
-    return true;
-  }
-};
-
-// 32-bit RenderScript is armv7 with width and align of 'long' set to 8-bytes
-class RenderScript32TargetInfo : public ARMleTargetInfo {
-public:
-  RenderScript32TargetInfo(const llvm::Triple &Triple,
-                           const TargetOptions &Opts)
-      : ARMleTargetInfo(llvm::Triple("armv7", Triple.getVendorName(),
-                                     Triple.getOSName(),
-                                     Triple.getEnvironmentName()),
-                        Opts) {
-    IsRenderScriptTarget = true;
-    LongWidth = LongAlign = 64;
-  }
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    Builder.defineMacro("__RENDERSCRIPT__");
-    ARMleTargetInfo::getTargetDefines(Opts, Builder);
-  }
-};
-
-// 64-bit RenderScript is aarch64
-class RenderScript64TargetInfo : public AArch64leTargetInfo {
-public:
-  RenderScript64TargetInfo(const llvm::Triple &Triple,
-                           const TargetOptions &Opts)
-      : AArch64leTargetInfo(llvm::Triple("aarch64", Triple.getVendorName(),
-                                         Triple.getOSName(),
-                                         Triple.getEnvironmentName()),
-                            Opts) {
-    IsRenderScriptTarget = true;
-  }
-
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    Builder.defineMacro("__RENDERSCRIPT__");
-    AArch64leTargetInfo::getTargetDefines(Opts, Builder);
-  }
-};
-
-/// Information about a specific microcontroller.
-struct MCUInfo {
-  const char *Name;
-  const char *DefineName;
-};
-
-// This list should be kept up-to-date with AVRDevices.td in LLVM.
-static ArrayRef<MCUInfo> AVRMcus = {
-  { "at90s1200", "__AVR_AT90S1200__" },
-  { "attiny11", "__AVR_ATtiny11__" },
-  { "attiny12", "__AVR_ATtiny12__" },
-  { "attiny15", "__AVR_ATtiny15__" },
-  { "attiny28", "__AVR_ATtiny28__" },
-  { "at90s2313", "__AVR_AT90S2313__" },
-  { "at90s2323", "__AVR_AT90S2323__" },
-  { "at90s2333", "__AVR_AT90S2333__" },
-  { "at90s2343", "__AVR_AT90S2343__" },
-  { "attiny22", "__AVR_ATtiny22__" },
-  { "attiny26", "__AVR_ATtiny26__" },
-  { "at86rf401", "__AVR_AT86RF401__" },
-  { "at90s4414", "__AVR_AT90S4414__" },
-  { "at90s4433", "__AVR_AT90S4433__" },
-  { "at90s4434", "__AVR_AT90S4434__" },
-  { "at90s8515", "__AVR_AT90S8515__" },
-  { "at90c8534", "__AVR_AT90c8534__" },
-  { "at90s8535", "__AVR_AT90S8535__" },
-  { "ata5272", "__AVR_ATA5272__" },
-  { "attiny13", "__AVR_ATtiny13__" },
-  { "attiny13a", "__AVR_ATtiny13A__" },
-  { "attiny2313", "__AVR_ATtiny2313__" },
-  { "attiny2313a", "__AVR_ATtiny2313A__" },
-  { "attiny24", "__AVR_ATtiny24__" },
-  { "attiny24a", "__AVR_ATtiny24A__" },
-  { "attiny4313", "__AVR_ATtiny4313__" },
-  { "attiny44", "__AVR_ATtiny44__" },
-  { "attiny44a", "__AVR_ATtiny44A__" },
-  { "attiny84", "__AVR_ATtiny84__" },
-  { "attiny84a", "__AVR_ATtiny84A__" },
-  { "attiny25", "__AVR_ATtiny25__" },
-  { "attiny45", "__AVR_ATtiny45__" },
-  { "attiny85", "__AVR_ATtiny85__" },
-  { "attiny261", "__AVR_ATtiny261__" },
-  { "attiny261a", "__AVR_ATtiny261A__" },
-  { "attiny461", "__AVR_ATtiny461__" },
-  { "attiny461a", "__AVR_ATtiny461A__" },
-  { "attiny861", "__AVR_ATtiny861__" },
-  { "attiny861a", "__AVR_ATtiny861A__" },
-  { "attiny87", "__AVR_ATtiny87__" },
-  { "attiny43u", "__AVR_ATtiny43U__" },
-  { "attiny48", "__AVR_ATtiny48__" },
-  { "attiny88", "__AVR_ATtiny88__" },
-  { "attiny828", "__AVR_ATtiny828__" },
-  { "at43usb355", "__AVR_AT43USB355__" },
-  { "at76c711", "__AVR_AT76C711__" },
-  { "atmega103", "__AVR_ATmega103__" },
-  { "at43usb320", "__AVR_AT43USB320__" },
-  { "attiny167", "__AVR_ATtiny167__" },
-  { "at90usb82", "__AVR_AT90USB82__" },
-  { "at90usb162", "__AVR_AT90USB162__" },
-  { "ata5505", "__AVR_ATA5505__" },
-  { "atmega8u2", "__AVR_ATmega8U2__" },
-  { "atmega16u2", "__AVR_ATmega16U2__" },
-  { "atmega32u2", "__AVR_ATmega32U2__" },
-  { "attiny1634", "__AVR_ATtiny1634__" },
-  { "atmega8", "__AVR_ATmega8__" },
-  { "ata6289", "__AVR_ATA6289__" },
-  { "atmega8a", "__AVR_ATmega8A__" },
-  { "ata6285", "__AVR_ATA6285__" },
-  { "ata6286", "__AVR_ATA6286__" },
-  { "atmega48", "__AVR_ATmega48__" },
-  { "atmega48a", "__AVR_ATmega48A__" },
-  { "atmega48pa", "__AVR_ATmega48PA__" },
-  { "atmega48p", "__AVR_ATmega48P__" },
-  { "atmega88", "__AVR_ATmega88__" },
-  { "atmega88a", "__AVR_ATmega88A__" },
-  { "atmega88p", "__AVR_ATmega88P__" },
-  { "atmega88pa", "__AVR_ATmega88PA__" },
-  { "atmega8515", "__AVR_ATmega8515__" },
-  { "atmega8535", "__AVR_ATmega8535__" },
-  { "atmega8hva", "__AVR_ATmega8HVA__" },
-  { "at90pwm1", "__AVR_AT90PWM1__" },
-  { "at90pwm2", "__AVR_AT90PWM2__" },
-  { "at90pwm2b", "__AVR_AT90PWM2B__" },
-  { "at90pwm3", "__AVR_AT90PWM3__" },
-  { "at90pwm3b", "__AVR_AT90PWM3B__" },
-  { "at90pwm81", "__AVR_AT90PWM81__" },
-  { "ata5790", "__AVR_ATA5790__" },
-  { "ata5795", "__AVR_ATA5795__" },
-  { "atmega16", "__AVR_ATmega16__" },
-  { "atmega16a", "__AVR_ATmega16A__" },
-  { "atmega161", "__AVR_ATmega161__" },
-  { "atmega162", "__AVR_ATmega162__" },
-  { "atmega163", "__AVR_ATmega163__" },
-  { "atmega164a", "__AVR_ATmega164A__" },
-  { "atmega164p", "__AVR_ATmega164P__" },
-  { "atmega164pa", "__AVR_ATmega164PA__" },
-  { "atmega165", "__AVR_ATmega165__" },
-  { "atmega165a", "__AVR_ATmega165A__" },
-  { "atmega165p", "__AVR_ATmega165P__" },
-  { "atmega165pa", "__AVR_ATmega165PA__" },
-  { "atmega168", "__AVR_ATmega168__" },
-  { "atmega168a", "__AVR_ATmega168A__" },
-  { "atmega168p", "__AVR_ATmega168P__" },
-  { "atmega168pa", "__AVR_ATmega168PA__" },
-  { "atmega169", "__AVR_ATmega169__" },
-  { "atmega169a", "__AVR_ATmega169A__" },
-  { "atmega169p", "__AVR_ATmega169P__" },
-  { "atmega169pa", "__AVR_ATmega169PA__" },
-  { "atmega32", "__AVR_ATmega32__" },
-  { "atmega32a", "__AVR_ATmega32A__" },
-  { "atmega323", "__AVR_ATmega323__" },
-  { "atmega324a", "__AVR_ATmega324A__" },
-  { "atmega324p", "__AVR_ATmega324P__" },
-  { "atmega324pa", "__AVR_ATmega324PA__" },
-  { "atmega325", "__AVR_ATmega325__" },
-  { "atmega325a", "__AVR_ATmega325A__" },
-  { "atmega325p", "__AVR_ATmega325P__" },
-  { "atmega325pa", "__AVR_ATmega325PA__" },
-  { "atmega3250", "__AVR_ATmega3250__" },
-  { "atmega3250a", "__AVR_ATmega3250A__" },
-  { "atmega3250p", "__AVR_ATmega3250P__" },
-  { "atmega3250pa", "__AVR_ATmega3250PA__" },
-  { "atmega328", "__AVR_ATmega328__" },
-  { "atmega328p", "__AVR_ATmega328P__" },
-  { "atmega329", "__AVR_ATmega329__" },
-  { "atmega329a", "__AVR_ATmega329A__" },
-  { "atmega329p", "__AVR_ATmega329P__" },
-  { "atmega329pa", "__AVR_ATmega329PA__" },
-  { "atmega3290", "__AVR_ATmega3290__" },
-  { "atmega3290a", "__AVR_ATmega3290A__" },
-  { "atmega3290p", "__AVR_ATmega3290P__" },
-  { "atmega3290pa", "__AVR_ATmega3290PA__" },
-  { "atmega406", "__AVR_ATmega406__" },
-  { "atmega64", "__AVR_ATmega64__" },
-  { "atmega64a", "__AVR_ATmega64A__" },
-  { "atmega640", "__AVR_ATmega640__" },
-  { "atmega644", "__AVR_ATmega644__" },
-  { "atmega644a", "__AVR_ATmega644A__" },
-  { "atmega644p", "__AVR_ATmega644P__" },
-  { "atmega644pa", "__AVR_ATmega644PA__" },
-  { "atmega645", "__AVR_ATmega645__" },
-  { "atmega645a", "__AVR_ATmega645A__" },
-  { "atmega645p", "__AVR_ATmega645P__" },
-  { "atmega649", "__AVR_ATmega649__" },
-  { "atmega649a", "__AVR_ATmega649A__" },
-  { "atmega649p", "__AVR_ATmega649P__" },
-  { "atmega6450", "__AVR_ATmega6450__" },
-  { "atmega6450a", "__AVR_ATmega6450A__" },
-  { "atmega6450p", "__AVR_ATmega6450P__" },
-  { "atmega6490", "__AVR_ATmega6490__" },
-  { "atmega6490a", "__AVR_ATmega6490A__" },
-  { "atmega6490p", "__AVR_ATmega6490P__" },
-  { "atmega64rfr2", "__AVR_ATmega64RFR2__" },
-  { "atmega644rfr2", "__AVR_ATmega644RFR2__" },
-  { "atmega16hva", "__AVR_ATmega16HVA__" },
-  { "atmega16hva2", "__AVR_ATmega16HVA2__" },
-  { "atmega16hvb", "__AVR_ATmega16HVB__" },
-  { "atmega16hvbrevb", "__AVR_ATmega16HVBREVB__" },
-  { "atmega32hvb", "__AVR_ATmega32HVB__" },
-  { "atmega32hvbrevb", "__AVR_ATmega32HVBREVB__" },
-  { "atmega64hve", "__AVR_ATmega64HVE__" },
-  { "at90can32", "__AVR_AT90CAN32__" },
-  { "at90can64", "__AVR_AT90CAN64__" },
-  { "at90pwm161", "__AVR_AT90PWM161__" },
-  { "at90pwm216", "__AVR_AT90PWM216__" },
-  { "at90pwm316", "__AVR_AT90PWM316__" },
-  { "atmega32c1", "__AVR_ATmega32C1__" },
-  { "atmega64c1", "__AVR_ATmega64C1__" },
-  { "atmega16m1", "__AVR_ATmega16M1__" },
-  { "atmega32m1", "__AVR_ATmega32M1__" },
-  { "atmega64m1", "__AVR_ATmega64M1__" },
-  { "atmega16u4", "__AVR_ATmega16U4__" },
-  { "atmega32u4", "__AVR_ATmega32U4__" },
-  { "atmega32u6", "__AVR_ATmega32U6__" },
-  { "at90usb646", "__AVR_AT90USB646__" },
-  { "at90usb647", "__AVR_AT90USB647__" },
-  { "at90scr100", "__AVR_AT90SCR100__" },
-  { "at94k", "__AVR_AT94K__" },
-  { "m3000", "__AVR_AT000__" },
-  { "atmega128", "__AVR_ATmega128__" },
-  { "atmega128a", "__AVR_ATmega128A__" },
-  { "atmega1280", "__AVR_ATmega1280__" },
-  { "atmega1281", "__AVR_ATmega1281__" },
-  { "atmega1284", "__AVR_ATmega1284__" },
-  { "atmega1284p", "__AVR_ATmega1284P__" },
-  { "atmega128rfa1", "__AVR_ATmega128RFA1__" },
-  { "atmega128rfr2", "__AVR_ATmega128RFR2__" },
-  { "atmega1284rfr2", "__AVR_ATmega1284RFR2__" },
-  { "at90can128", "__AVR_AT90CAN128__" },
-  { "at90usb1286", "__AVR_AT90USB1286__" },
-  { "at90usb1287", "__AVR_AT90USB1287__" },
-  { "atmega2560", "__AVR_ATmega2560__" },
-  { "atmega2561", "__AVR_ATmega2561__" },
-  { "atmega256rfr2", "__AVR_ATmega256RFR2__" },
-  { "atmega2564rfr2", "__AVR_ATmega2564RFR2__" },
-  { "atxmega16a4", "__AVR_ATxmega16A4__" },
-  { "atxmega16a4u", "__AVR_ATxmega16a4U__" },
-  { "atxmega16c4", "__AVR_ATxmega16C4__" },
-  { "atxmega16d4", "__AVR_ATxmega16D4__" },
-  { "atxmega32a4", "__AVR_ATxmega32A4__" },
-  { "atxmega32a4u", "__AVR_ATxmega32A4U__" },
-  { "atxmega32c4", "__AVR_ATxmega32C4__" },
-  { "atxmega32d4", "__AVR_ATxmega32D4__" },
-  { "atxmega32e5", "__AVR_ATxmega32E5__" },
-  { "atxmega16e5", "__AVR_ATxmega16E5__" },
-  { "atxmega8e5", "__AVR_ATxmega8E5__" },
-  { "atxmega32x1", "__AVR_ATxmega32X1__" },
-  { "atxmega64a3", "__AVR_ATxmega64A3__" },
-  { "atxmega64a3u", "__AVR_ATxmega64A3U__" },
-  { "atxmega64a4u", "__AVR_ATxmega64A4U__" },
-  { "atxmega64b1", "__AVR_ATxmega64B1__" },
-  { "atxmega64b3", "__AVR_ATxmega64B3__" },
-  { "atxmega64c3", "__AVR_ATxmega64C3__" },
-  { "atxmega64d3", "__AVR_ATxmega64D3__" },
-  { "atxmega64d4", "__AVR_ATxmega64D4__" },
-  { "atxmega64a1", "__AVR_ATxmega64A1__" },
-  { "atxmega64a1u", "__AVR_ATxmega64A1U__" },
-  { "atxmega128a3", "__AVR_ATxmega128A3__" },
-  { "atxmega128a3u", "__AVR_ATxmega128A3U__" },
-  { "atxmega128b1", "__AVR_ATxmega128B1__" },
-  { "atxmega128b3", "__AVR_ATxmega128B3__" },
-  { "atxmega128c3", "__AVR_ATxmega128C3__" },
-  { "atxmega128d3", "__AVR_ATxmega128D3__" },
-  { "atxmega128d4", "__AVR_ATxmega128D4__" },
-  { "atxmega192a3", "__AVR_ATxmega192A3__" },
-  { "atxmega192a3u", "__AVR_ATxmega192A3U__" },
-  { "atxmega192c3", "__AVR_ATxmega192C3__" },
-  { "atxmega192d3", "__AVR_ATxmega192D3__" },
-  { "atxmega256a3", "__AVR_ATxmega256A3__" },
-  { "atxmega256a3u", "__AVR_ATxmega256A3U__" },
-  { "atxmega256a3b", "__AVR_ATxmega256A3B__" },
-  { "atxmega256a3bu", "__AVR_ATxmega256A3BU__" },
-  { "atxmega256c3", "__AVR_ATxmega256C3__" },
-  { "atxmega256d3", "__AVR_ATxmega256D3__" },
-  { "atxmega384c3", "__AVR_ATxmega384C3__" },
-  { "atxmega384d3", "__AVR_ATxmega384D3__" },
-  { "atxmega128a1", "__AVR_ATxmega128A1__" },
-  { "atxmega128a1u", "__AVR_ATxmega128A1U__" },
-  { "atxmega128a4u", "__AVR_ATxmega128a4U__" },
-  { "attiny4", "__AVR_ATtiny4__" },
-  { "attiny5", "__AVR_ATtiny5__" },
-  { "attiny9", "__AVR_ATtiny9__" },
-  { "attiny10", "__AVR_ATtiny10__" },
-  { "attiny20", "__AVR_ATtiny20__" },
-  { "attiny40", "__AVR_ATtiny40__" },
-  { "attiny102", "__AVR_ATtiny102__" },
-  { "attiny104", "__AVR_ATtiny104__" },
-};
-
-// AVR Target
-class AVRTargetInfo : public TargetInfo {
-public:
-  AVRTargetInfo(const llvm::Triple &Triple, const TargetOptions &)
-      : TargetInfo(Triple) {
-    TLSSupported = false;
-    PointerWidth = 16;
-    PointerAlign = 8;
-    IntWidth = 16;
-    IntAlign = 8;
-    LongWidth = 32;
-    LongAlign = 8;
-    LongLongWidth = 64;
-    LongLongAlign = 8;
-    SuitableAlign = 8;
-    DefaultAlignForAttributeAligned = 8;
-    HalfWidth = 16;
-    HalfAlign = 8;
-    FloatWidth = 32;
-    FloatAlign = 8;
-    DoubleWidth = 32;
-    DoubleAlign = 8;
-    DoubleFormat = &llvm::APFloat::IEEEsingle();
-    LongDoubleWidth = 32;
-    LongDoubleAlign = 8;
-    LongDoubleFormat = &llvm::APFloat::IEEEsingle();
-    SizeType = UnsignedInt;
-    PtrDiffType = SignedInt;
-    IntPtrType = SignedInt;
-    Char16Type = UnsignedInt;
-    WCharType = SignedInt;
-    WIntType = SignedInt;
-    Char32Type = UnsignedLong;
-    SigAtomicType = SignedChar;
-    resetDataLayout("e-p:16:16:16-i8:8:8-i16:16:16-i32:32:32-i64:64:64"
-		    "-f32:32:32-f64:64:64-n8");
-  }
-
-  void getTargetDefines(const LangOptions &Opts,
-                        MacroBuilder &Builder) const override {
-    Builder.defineMacro("AVR");
-    Builder.defineMacro("__AVR");
-    Builder.defineMacro("__AVR__");
-
-    if (!this->CPU.empty()) {
-      auto It = std::find_if(AVRMcus.begin(), AVRMcus.end(),
-        [&](const MCUInfo &Info) { return Info.Name == this->CPU; });
-
-      if (It != AVRMcus.end())
-        Builder.defineMacro(It->DefineName);
-    }
-  }
-
-  ArrayRef<Builtin::Info> getTargetBuiltins() const override {
-    return None;
-  }
-
-  BuiltinVaListKind getBuiltinVaListKind() const override {
-    return TargetInfo::VoidPtrBuiltinVaList;
-  }
-
-  const char *getClobbers() const override {
-    return "";
-  }
-
-  ArrayRef<const char *> getGCCRegNames() const override {
-    static const char * const GCCRegNames[] = {
-      "r0",   "r1",   "r2",   "r3",   "r4",   "r5",   "r6",   "r7",
-      "r8",   "r9",   "r10",  "r11",  "r12",  "r13",  "r14",  "r15",
-      "r16",  "r17",  "r18",  "r19",  "r20",  "r21",  "r22",  "r23",
-      "r24",  "r25",  "X",    "Y",    "Z",    "SP"
-    };
-    return llvm::makeArrayRef(GCCRegNames);
-  }
-
-  ArrayRef<TargetInfo::GCCRegAlias> getGCCRegAliases() const override {
-    return None;
-  }
-
-  ArrayRef<TargetInfo::AddlRegName> getGCCAddlRegNames() const override {
-    static const TargetInfo::AddlRegName AddlRegNames[] = {
-      { { "r26", "r27"}, 26 },
-      { { "r28", "r29"}, 27 },
-      { { "r30", "r31"}, 28 },
-      { { "SPL", "SPH"}, 29 },
-    };
-    return llvm::makeArrayRef(AddlRegNames);
-  }
-
-  bool validateAsmConstraint(const char *&Name,
-                             TargetInfo::ConstraintInfo &Info) const override {
-    // There aren't any multi-character AVR specific constraints.
-    if (StringRef(Name).size() > 1) return false;
-
-    switch (*Name) {
-      default: return false;
-      case 'a': // Simple upper registers
-      case 'b': // Base pointer registers pairs
-      case 'd': // Upper register
-      case 'l': // Lower registers
-      case 'e': // Pointer register pairs
-      case 'q': // Stack pointer register
-      case 'r': // Any register
-      case 'w': // Special upper register pairs
-      case 't': // Temporary register
-      case 'x': case 'X': // Pointer register pair X
-      case 'y': case 'Y': // Pointer register pair Y
-      case 'z': case 'Z': // Pointer register pair Z
-        Info.setAllowsRegister();
-        return true;
-      case 'I': // 6-bit positive integer constant
-        Info.setRequiresImmediate(0, 63);
-        return true;
-      case 'J': // 6-bit negative integer constant
-        Info.setRequiresImmediate(-63, 0);
-        return true;
-      case 'K': // Integer constant (Range: 2)
-        Info.setRequiresImmediate(2);
-        return true;
-      case 'L': // Integer constant (Range: 0)
-        Info.setRequiresImmediate(0);
-        return true;
-      case 'M': // 8-bit integer constant
-        Info.setRequiresImmediate(0, 0xff);
-        return true;
-      case 'N': // Integer constant (Range: -1)
-        Info.setRequiresImmediate(-1);
-        return true;
-      case 'O': // Integer constant (Range: 8, 16, 24)
-        Info.setRequiresImmediate({8, 16, 24});
-        return true;
-      case 'P': // Integer constant (Range: 1)
-        Info.setRequiresImmediate(1);
-        return true;
-      case 'R': // Integer constant (Range: -6 to 5)
-        Info.setRequiresImmediate(-6, 5);
-        return true;
-      case 'G': // Floating point constant
-      case 'Q': // A memory address based on Y or Z pointer with displacement.
-        return true;
-    }
-
-    return false;
-  }
-
-  IntType getIntTypeByWidth(unsigned BitWidth,
-                            bool IsSigned) const final {
-    // AVR prefers int for 16-bit integers.
-    return BitWidth == 16 ? (IsSigned ? SignedInt : UnsignedInt)
-                          : TargetInfo::getIntTypeByWidth(BitWidth, IsSigned);
-  }
-
-  IntType getLeastIntTypeByWidth(unsigned BitWidth,
-                                 bool IsSigned) const final {
-    // AVR uses int for int_least16_t and int_fast16_t.
-    return BitWidth == 16
-               ? (IsSigned ? SignedInt : UnsignedInt)
-               : TargetInfo::getLeastIntTypeByWidth(BitWidth, IsSigned);
-  }
-
-  bool setCPU(const std::string &Name) override {
-    bool IsFamily = llvm::StringSwitch<bool>(Name)
-      .Case("avr1", true)
-      .Case("avr2", true)
-      .Case("avr25", true)
-      .Case("avr3", true)
-      .Case("avr31", true)
-      .Case("avr35", true)
-      .Case("avr4", true)
-      .Case("avr5", true)
-      .Case("avr51", true)
-      .Case("avr6", true)
-      .Case("avrxmega1", true)
-      .Case("avrxmega2", true)
-      .Case("avrxmega3", true)
-      .Case("avrxmega4", true)
-      .Case("avrxmega5", true)
-      .Case("avrxmega6", true)
-      .Case("avrxmega7", true)
-      .Case("avrtiny", true)
-      .Default(false);
-
-    if (IsFamily) this->CPU = Name;
-
-    bool IsMCU = std::find_if(AVRMcus.begin(), AVRMcus.end(),
-      [&](const MCUInfo &Info) { return Info.Name == Name; }) != AVRMcus.end();
-
-    if (IsMCU) this->CPU = Name;
-
-    return IsFamily || IsMCU;
-  }
-
-protected:
-  std::string CPU;
-};
-
-} // end anonymous namespace
 
 //===----------------------------------------------------------------------===//
 // Driver code
 //===----------------------------------------------------------------------===//
 
-static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
-                                  const TargetOptions &Opts) {
+TargetInfo *AllocateTarget(const llvm::Triple &Triple,
+                           const TargetOptions &Opts) {
   llvm::Triple::OSType os = Triple.getOS();
 
   switch (Triple.getArch()) {
@@ -9642,7 +8716,13 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
     case llvm::Triple::OpenBSD:
       return new OpenBSDTargetInfo<AArch64leTargetInfo>(Triple, Opts);
     case llvm::Triple::Win32:
-      return new MicrosoftARM64TargetInfo(Triple, Opts);
+      switch (Triple.getEnvironment()) {
+      case llvm::Triple::GNU:
+        return new MinGWARM64TargetInfo(Triple, Opts);
+      case llvm::Triple::MSVC:
+      default: // Assume MSVC for unknown environments
+        return new MicrosoftARM64TargetInfo(Triple, Opts);
+      }
     default:
       return new AArch64leTargetInfo(Triple, Opts);
     }
@@ -9677,8 +8757,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
       return new NetBSDTargetInfo<ARMleTargetInfo>(Triple, Opts);
     case llvm::Triple::OpenBSD:
       return new OpenBSDTargetInfo<ARMleTargetInfo>(Triple, Opts);
-    case llvm::Triple::Bitrig:
-      return new BitrigTargetInfo<ARMleTargetInfo>(Triple, Opts);
     case llvm::Triple::RTEMS:
       return new RTEMSTargetInfo<ARMleTargetInfo>(Triple, Opts);
     case llvm::Triple::NaCl:
@@ -9713,8 +8791,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
       return new NetBSDTargetInfo<ARMbeTargetInfo>(Triple, Opts);
     case llvm::Triple::OpenBSD:
       return new OpenBSDTargetInfo<ARMbeTargetInfo>(Triple, Opts);
-    case llvm::Triple::Bitrig:
-      return new BitrigTargetInfo<ARMbeTargetInfo>(Triple, Opts);
     case llvm::Triple::RTEMS:
       return new RTEMSTargetInfo<ARMbeTargetInfo>(Triple, Opts);
     case llvm::Triple::NaCl:
@@ -9945,8 +9021,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
       return new NetBSDI386TargetInfo(Triple, Opts);
     case llvm::Triple::OpenBSD:
       return new OpenBSDI386TargetInfo(Triple, Opts);
-    case llvm::Triple::Bitrig:
-      return new BitrigI386TargetInfo(Triple, Opts);
     case llvm::Triple::FreeBSD:
       return new FreeBSDTargetInfo<X86_32TargetInfo>(Triple, Opts);
     case llvm::Triple::KFreeBSD:
@@ -10002,8 +9076,6 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
       return new NetBSDTargetInfo<X86_64TargetInfo>(Triple, Opts);
     case llvm::Triple::OpenBSD:
       return new OpenBSDX86_64TargetInfo(Triple, Opts);
-    case llvm::Triple::Bitrig:
-      return new BitrigX86_64TargetInfo(Triple, Opts);
     case llvm::Triple::FreeBSD:
       return new FreeBSDTargetInfo<X86_64TargetInfo>(Triple, Opts);
     case llvm::Triple::Fuchsia:
@@ -10068,7 +9140,10 @@ static TargetInfo *AllocateTarget(const llvm::Triple &Triple,
     return new LinuxTargetInfo<RenderScript64TargetInfo>(Triple, Opts);
   }
 }
+} // namespace targets
+} // namespace clang
 
+using namespace clang::targets;
 /// CreateTargetInfo - Return the target info object for the specified target
 /// options.
 TargetInfo *
@@ -10107,7 +9182,7 @@ TargetInfo::CreateTargetInfo(DiagnosticsEngine &Diags,
   llvm::StringMap<bool> Features;
   if (!Target->initFeatureMap(Features, Diags, Opts->CPU,
                               Opts->FeaturesAsWritten))
-      return nullptr;
+    return nullptr;
 
   // Add the features to the compile options.
   Opts->Features.clear();
