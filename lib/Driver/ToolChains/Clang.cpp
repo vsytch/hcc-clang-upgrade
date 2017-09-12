@@ -907,6 +907,7 @@ static void RenderDebugEnablingArgs(const ArgList &Args, ArgStringList &CmdArgs,
   if (DwarfVersion > 0)
     CmdArgs.push_back(
         Args.MakeArgString("-dwarf-version=" + Twine(DwarfVersion)));
+#ifdef linux
   switch (DebuggerTuning) {
   case llvm::DebuggerKind::GDB:
     CmdArgs.push_back("-debugger-tuning=gdb");
@@ -920,6 +921,7 @@ static void RenderDebugEnablingArgs(const ArgList &Args, ArgStringList &CmdArgs,
   default:
     break;
   }
+#endif
 }
 
 static void RenderDebugInfoCompressionArgs(const ArgList &Args,
@@ -2932,6 +2934,7 @@ static void RenderDebugOptions(const ToolChain &TC, const Driver &D,
   if (Args.hasArg(options::OPT_gcodeview) || EmitCodeView) {
     // DWARFVersion remains at 0 if no explicit choice was made.
     CmdArgs.push_back("-gcodeview");
+    CmdArgs.push_back("-debug-info-kind=limited");
   } else if (DWARFVersion == 0 &&
              DebugInfoKind != codegenoptions::NoDebugInfo) {
     DWARFVersion = TC.GetDefaultDwarfVersion();
@@ -2946,9 +2949,9 @@ static void RenderDebugOptions(const ToolChain &TC, const Driver &D,
   // is fine for CodeView (and PDB).  In practice, however, the Microsoft
   // debuggers don't handle missing end columns well, so it's better not to
   // include any column info.
-  if (Args.hasFlag(options::OPT_gcolumn_info, options::OPT_gno_column_info,
-                   /*Default=*/ !IsPS4CPU && !(IsWindowsMSVC && EmitCodeView)))
-    CmdArgs.push_back("-dwarf-column-info");
+  //if (Args.hasFlag(options::OPT_gcolumn_info, options::OPT_gno_column_info,
+  //                 /*Default=*/ !IsPS4CPU && !(IsWindowsMSVC && EmitCodeView)))
+  //  CmdArgs.push_back("-dwarf-column-info");
 
   // FIXME: Move backend command line options to the module.
   // If -gline-tables-only is the last option it wins.

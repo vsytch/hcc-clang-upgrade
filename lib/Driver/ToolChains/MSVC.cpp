@@ -6,7 +6,7 @@
 // License. See LICENSE.TXT for details.
 //
 //===----------------------------------------------------------------------===//
-
+#include "Gnu.h"
 #include "MSVC.h"
 #include "CommonArgs.h"
 #include "Darwin.h"
@@ -691,9 +691,10 @@ MSVCToolChain::MSVCToolChain(const Driver &D, const llvm::Triple &Triple,
 }
 
 Tool *MSVCToolChain::buildLinker() const {
-  if (VCToolChainPath.empty())
-    getDriver().Diag(clang::diag::warn_drv_msvc_not_found);
-  return new tools::visualstudio::Linker(*this);
+  //if (VCToolChainPath.empty())
+  //  getDriver().Diag(clang::diag::warn_drv_msvc_not_found);
+  //return new tools::visualstudio::Linker(*this);
+  return new tools::gnutools::Linker(*this);
 }
 
 Tool *MSVCToolChain::buildAssembler() const {

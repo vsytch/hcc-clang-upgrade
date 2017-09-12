@@ -241,6 +241,10 @@ public:
       return CCCR_Warning;
     case CC_C:
     case CC_OpenCLKernel:
+    case CC_X86ThisCall:
+    case CC_X86FastCall:
+    case CC_X86StdCall:
+    case CC_X86VectorCall:
       return CCCR_OK;
     }
   }

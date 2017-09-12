@@ -1727,8 +1727,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
               if (Args.hasArg(options::OPT_cxxamp_cpu_mode))
                   Inputs.push_back(std::make_pair(types::TY_CXX_AMP_CPU, A));
               if(Args.hasArg(options::OPT_hc_mode)) {
-                Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
                 Inputs.push_back(std::make_pair(types::TY_HC_KERNEL, A));
+                Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
               } else {
                 Inputs.push_back(std::make_pair(Ty, A));
                 Inputs.push_back(std::make_pair(types::TY_CXX_AMP, A));
@@ -1751,8 +1751,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
               if (Args.hasArg(options::OPT_cxxamp_cpu_mode))
                   Inputs.push_back(std::make_pair(types::TY_CXX_AMP_CPU, A));
               if(Args.hasArg(options::OPT_hc_mode)) {
-                Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
                 Inputs.push_back(std::make_pair(types::TY_HC_KERNEL, A));
+                Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
               } else {
                 Inputs.push_back(std::make_pair(Ty, A));
                 Inputs.push_back(std::make_pair(types::TY_CXX_AMP, A));
@@ -1764,8 +1764,8 @@ void Driver::BuildInputs(const ToolChain &TC, DerivedArgList &Args,
               if (Args.hasArg(options::OPT_cxxamp_cpu_mode))
                   Inputs.push_back(std::make_pair(types::TY_CXX_AMP_CPU, A));
               if(Args.hasArg(options::OPT_hc_mode)) {
-                Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
                 Inputs.push_back(std::make_pair(types::TY_HC_KERNEL, A));
+                Inputs.push_back(std::make_pair(types::TY_HC_HOST, A));
               } else {
                 Inputs.push_back(std::make_pair(Ty, A));
                 Inputs.push_back(std::make_pair(types::TY_CXX_AMP, A));
