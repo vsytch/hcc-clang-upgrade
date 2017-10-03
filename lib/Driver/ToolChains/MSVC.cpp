@@ -30,6 +30,7 @@
 #include "llvm/Support/Path.h"
 #include "llvm/Support/Process.h"
 #include <cstdio>
+#include <memory>
 
 // Include the necessary headers to interface with the Windows registry and
 // environment.
@@ -316,235 +317,239 @@ void visualstudio::Linker::ConstructJob(Compilation &C, const JobAction &JA,
                                         const InputInfoList &Inputs,
                                         const ArgList &Args,
                                         const char *LinkingOutput) const {
-  ArgStringList CmdArgs;
-
-  auto &TC = static_cast<const toolchains::MSVCToolChain &>(getToolChain());
-
-  assert((Output.isFilename() || Output.isNothing()) && "invalid output");
-  if (Output.isFilename())
-    CmdArgs.push_back(
-        Args.MakeArgString(std::string("-out:") + Output.getFilename()));
-
-  if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nostartfiles) &&
-      !C.getDriver().IsCLMode())
-    CmdArgs.push_back("-defaultlib:libcmt");
-
-  if (!llvm::sys::Process::GetEnv("LIB")) {
-    // If the VC environment hasn't been configured (perhaps because the user
-    // did not run vcvarsall), try to build a consistent link environment.  If
-    // the environment variable is set however, assume the user knows what
-    // they're doing.
-    CmdArgs.push_back(Args.MakeArgString(
-        Twine("-libpath:") +
-        TC.getSubDirectoryPath(
-            toolchains::MSVCToolChain::SubDirectoryType::Lib)));
-
-    if (TC.useUniversalCRT()) {
-      std::string UniversalCRTLibPath;
-      if (TC.getUniversalCRTLibraryPath(UniversalCRTLibPath))
-        CmdArgs.push_back(
-            Args.MakeArgString(Twine("-libpath:") + UniversalCRTLibPath));
-    }
-
-    std::string WindowsSdkLibPath;
-    if (TC.getWindowsSDKLibraryPath(WindowsSdkLibPath))
-      CmdArgs.push_back(
-          Args.MakeArgString(std::string("-libpath:") + WindowsSdkLibPath));
-  }
-
-  if (!C.getDriver().IsCLMode() && Args.hasArg(options::OPT_L))
-    for (const auto &LibPath : Args.getAllArgValues(options::OPT_L))
-      CmdArgs.push_back(Args.MakeArgString("-libpath:" + LibPath));
-
-  CmdArgs.push_back("-nologo");
-
-  if (Args.hasArg(options::OPT_g_Group, options::OPT__SLASH_Z7,
-                  options::OPT__SLASH_Zd))
-    CmdArgs.push_back("-debug");
-
-  bool DLL = Args.hasArg(options::OPT__SLASH_LD, options::OPT__SLASH_LDd,
-                         options::OPT_shared);
-  if (DLL) {
-    CmdArgs.push_back(Args.MakeArgString("-dll"));
-
-    SmallString<128> ImplibName(Output.getFilename());
-    llvm::sys::path::replace_extension(ImplibName, "lib");
-    CmdArgs.push_back(Args.MakeArgString(std::string("-implib:") + ImplibName));
-  }
-
-  if (TC.getSanitizerArgs().needsAsanRt()) {
-    CmdArgs.push_back(Args.MakeArgString("-debug"));
-    CmdArgs.push_back(Args.MakeArgString("-incremental:no"));
-    if (TC.getSanitizerArgs().needsSharedAsanRt() ||
-        Args.hasArg(options::OPT__SLASH_MD, options::OPT__SLASH_MDd)) {
-      for (const auto &Lib : {"asan_dynamic", "asan_dynamic_runtime_thunk"})
-        CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
-      // Make sure the dynamic runtime thunk is not optimized out at link time
-      // to ensure proper SEH handling.
-      CmdArgs.push_back(Args.MakeArgString(
-          TC.getArch() == llvm::Triple::x86
-              ? "-include:___asan_seh_interceptor"
-              : "-include:__asan_seh_interceptor"));
-      // Make sure the linker consider all object files from the dynamic runtime
-      // thunk.
-      CmdArgs.push_back(Args.MakeArgString(std::string("-wholearchive:") +
-          TC.getCompilerRT(Args, "asan_dynamic_runtime_thunk")));
-    } else if (DLL) {
-      CmdArgs.push_back(TC.getCompilerRTArgString(Args, "asan_dll_thunk"));
-    } else {
-      for (const auto &Lib : {"asan", "asan_cxx"}) {
-        CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
-        // Make sure the linker consider all object files from the static lib.
-        // This is necessary because instrumented dlls need access to all the
-        // interface exported by the static lib in the main executable.
-        CmdArgs.push_back(Args.MakeArgString(std::string("-wholearchive:") +
-            TC.getCompilerRT(Args, Lib)));
-      }
-    }
-  }
-
-  Args.AddAllArgValues(CmdArgs, options::OPT__SLASH_link);
-
-  if (Args.hasFlag(options::OPT_fopenmp, options::OPT_fopenmp_EQ,
-                   options::OPT_fno_openmp, false)) {
-    CmdArgs.push_back("-nodefaultlib:vcomp.lib");
-    CmdArgs.push_back("-nodefaultlib:vcompd.lib");
-    CmdArgs.push_back(Args.MakeArgString(std::string("-libpath:") +
-                                         TC.getDriver().Dir + "/../lib"));
-    switch (TC.getDriver().getOpenMPRuntime(Args)) {
-    case Driver::OMPRT_OMP:
-      CmdArgs.push_back("-defaultlib:libomp.lib");
-      break;
-    case Driver::OMPRT_IOMP5:
-      CmdArgs.push_back("-defaultlib:libiomp5md.lib");
-      break;
-    case Driver::OMPRT_GOMP:
-      break;
-    case Driver::OMPRT_Unknown:
-      // Already diagnosed.
-      break;
-    }
-  }
-
-  // Add compiler-rt lib in case if it was explicitly
-  // specified as an argument for --rtlib option.
-  if (!Args.hasArg(options::OPT_nostdlib)) {
-    AddRunTimeLibs(TC, TC.getDriver(), CmdArgs, Args);
-  }
-
-  // Add filenames, libraries, and other linker inputs.
-  for (const auto &Input : Inputs) {
-    if (Input.isFilename()) {
-      CmdArgs.push_back(Input.getFilename());
-      continue;
-    }
-
-    const Arg &A = Input.getInputArg();
-
-    // Render -l options differently for the MSVC linker.
-    if (A.getOption().matches(options::OPT_l)) {
-      StringRef Lib = A.getValue();
-      const char *LinkLibArg;
-      if (Lib.endswith(".lib"))
-        LinkLibArg = Args.MakeArgString(Lib);
-      else
-        LinkLibArg = Args.MakeArgString(Lib + ".lib");
-      CmdArgs.push_back(LinkLibArg);
-      continue;
-    }
-
-    // Otherwise, this is some other kind of linker input option like -Wl, -z,
-    // or -L. Render it, even if MSVC doesn't understand it.
-    A.renderAsInput(Args, CmdArgs);
-  }
-
-  TC.addProfileRTLibs(Args, CmdArgs);
-
-  std::vector<const char *> Environment;
-
-  // We need to special case some linker paths.  In the case of lld, we need to
-  // translate 'lld' into 'lld-link', and in the case of the regular msvc
-  // linker, we need to use a special search algorithm.
-  llvm::SmallString<128> linkPath;
-  StringRef Linker = Args.getLastArgValue(options::OPT_fuse_ld_EQ, "link");
-  if (Linker.equals_lower("lld"))
-    Linker = "lld-link";
-
-  if (Linker.equals_lower("link")) {
-    // If we're using the MSVC linker, it's not sufficient to just use link
-    // from the program PATH, because other environments like GnuWin32 install
-    // their own link.exe which may come first.
-    linkPath = FindVisualStudioExecutable(TC, "link.exe");
-
-#ifdef USE_WIN32
-    // When cross-compiling with VS2017 or newer, link.exe expects to have
-    // its containing bin directory at the top of PATH, followed by the
-    // native target bin directory.
-    // e.g. when compiling for x86 on an x64 host, PATH should start with:
-    // /bin/HostX64/x86;/bin/HostX64/x64
-    // This doesn't attempt to handle ToolsetLayout::DevDivInternal.
-    if (TC.getIsVS2017OrNewer() &&
-        llvm::Triple(llvm::sys::getProcessTriple()).getArch() != TC.getArch()) {
-      auto HostArch = llvm::Triple(llvm::sys::getProcessTriple()).getArch();
-
-      auto EnvBlockWide =
-          std::unique_ptr<wchar_t[], decltype(&FreeEnvironmentStringsW)>(
-              GetEnvironmentStringsW(), FreeEnvironmentStringsW);
-      if (!EnvBlockWide)
-        goto SkipSettingEnvironment;
-
-      size_t EnvCount = 0;
-      size_t EnvBlockLen = 0;
-      while (EnvBlockWide[EnvBlockLen] != L'\0') {
-        ++EnvCount;
-        EnvBlockLen += std::wcslen(&EnvBlockWide[EnvBlockLen]) +
-                       1 /*string null-terminator*/;
-      }
-      ++EnvBlockLen; // add the block null-terminator
-
-      std::string EnvBlock;
-      if (!llvm::convertUTF16ToUTF8String(
-              llvm::ArrayRef<char>(reinterpret_cast<char *>(EnvBlockWide.get()),
-                                   EnvBlockLen * sizeof(EnvBlockWide[0])),
-              EnvBlock))
-        goto SkipSettingEnvironment;
-
-      Environment.reserve(EnvCount);
-
-      // Now loop over each string in the block and copy them into the
-      // environment vector, adjusting the PATH variable as needed when we
-      // find it.
-      for (const char *Cursor = EnvBlock.data(); *Cursor != '\0';) {
-        llvm::StringRef EnvVar(Cursor);
-        if (EnvVar.startswith_lower("path=")) {
-          using SubDirectoryType = toolchains::MSVCToolChain::SubDirectoryType;
-          constexpr size_t PrefixLen = 5; // strlen("path=")
-          Environment.push_back(Args.MakeArgString(
-              EnvVar.substr(0, PrefixLen) +
-              TC.getSubDirectoryPath(SubDirectoryType::Bin) +
-              llvm::Twine(llvm::sys::EnvPathSeparator) +
-              TC.getSubDirectoryPath(SubDirectoryType::Bin, HostArch) +
-              (EnvVar.size() > PrefixLen
-                   ? llvm::Twine(llvm::sys::EnvPathSeparator) +
-                         EnvVar.substr(PrefixLen)
-                   : "")));
-        } else {
-          Environment.push_back(Args.MakeArgString(EnvVar));
-        }
-        Cursor += EnvVar.size() + 1 /*null-terminator*/;
-      }
-    }
-  SkipSettingEnvironment:;
-#endif
+  if (Driver::IsCXXAMP(C.getArgs())) {
+    tools::gnutools::Linker(getToolChain()).ConstructJob(C, JA, Output, Inputs, Args, LinkingOutput);
   } else {
-    linkPath = TC.GetProgramPath(Linker.str().c_str());
-  }
+    ArgStringList CmdArgs;
 
-  auto LinkCmd = llvm::make_unique<Command>(
-      JA, *this, Args.MakeArgString(linkPath), CmdArgs, Inputs);
-  if (!Environment.empty())
-    LinkCmd->setEnvironment(Environment);
-  C.addCommand(std::move(LinkCmd));
+    auto &TC = static_cast<const toolchains::MSVCToolChain &>(getToolChain());
+
+    assert((Output.isFilename() || Output.isNothing()) && "invalid output");
+    if (Output.isFilename())
+      CmdArgs.push_back(
+          Args.MakeArgString(std::string("-out:") + Output.getFilename()));
+
+    if (!Args.hasArg(options::OPT_nostdlib, options::OPT_nostartfiles) &&
+        !C.getDriver().IsCLMode())
+      CmdArgs.push_back("-defaultlib:libcmt");
+
+    if (!llvm::sys::Process::GetEnv("LIB")) {
+      // If the VC environment hasn't been configured (perhaps because the user
+      // did not run vcvarsall), try to build a consistent link environment.  If
+      // the environment variable is set however, assume the user knows what
+      // they're doing.
+      CmdArgs.push_back(Args.MakeArgString(
+          Twine("-libpath:") +
+          TC.getSubDirectoryPath(
+              toolchains::MSVCToolChain::SubDirectoryType::Lib)));
+
+      if (TC.useUniversalCRT()) {
+        std::string UniversalCRTLibPath;
+        if (TC.getUniversalCRTLibraryPath(UniversalCRTLibPath))
+          CmdArgs.push_back(
+              Args.MakeArgString(Twine("-libpath:") + UniversalCRTLibPath));
+      }
+
+      std::string WindowsSdkLibPath;
+      if (TC.getWindowsSDKLibraryPath(WindowsSdkLibPath))
+        CmdArgs.push_back(
+            Args.MakeArgString(std::string("-libpath:") + WindowsSdkLibPath));
+    }
+
+    if (!C.getDriver().IsCLMode() && Args.hasArg(options::OPT_L))
+      for (const auto &LibPath : Args.getAllArgValues(options::OPT_L))
+        CmdArgs.push_back(Args.MakeArgString("-libpath:" + LibPath));
+
+    CmdArgs.push_back("-nologo");
+
+    if (Args.hasArg(options::OPT_g_Group, options::OPT__SLASH_Z7,
+                    options::OPT__SLASH_Zd))
+      CmdArgs.push_back("-debug");
+
+    bool DLL = Args.hasArg(options::OPT__SLASH_LD, options::OPT__SLASH_LDd,
+                          options::OPT_shared);
+    if (DLL) {
+      CmdArgs.push_back(Args.MakeArgString("-dll"));
+
+      SmallString<128> ImplibName(Output.getFilename());
+      llvm::sys::path::replace_extension(ImplibName, "lib");
+      CmdArgs.push_back(Args.MakeArgString(std::string("-implib:") + ImplibName));
+    }
+
+    if (TC.getSanitizerArgs().needsAsanRt()) {
+      CmdArgs.push_back(Args.MakeArgString("-debug"));
+      CmdArgs.push_back(Args.MakeArgString("-incremental:no"));
+      if (TC.getSanitizerArgs().needsSharedAsanRt() ||
+          Args.hasArg(options::OPT__SLASH_MD, options::OPT__SLASH_MDd)) {
+        for (const auto &Lib : {"asan_dynamic", "asan_dynamic_runtime_thunk"})
+          CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
+        // Make sure the dynamic runtime thunk is not optimized out at link time
+        // to ensure proper SEH handling.
+        CmdArgs.push_back(Args.MakeArgString(
+            TC.getArch() == llvm::Triple::x86
+                ? "-include:___asan_seh_interceptor"
+                : "-include:__asan_seh_interceptor"));
+        // Make sure the linker consider all object files from the dynamic runtime
+        // thunk.
+        CmdArgs.push_back(Args.MakeArgString(std::string("-wholearchive:") +
+            TC.getCompilerRT(Args, "asan_dynamic_runtime_thunk")));
+      } else if (DLL) {
+        CmdArgs.push_back(TC.getCompilerRTArgString(Args, "asan_dll_thunk"));
+      } else {
+        for (const auto &Lib : {"asan", "asan_cxx"}) {
+          CmdArgs.push_back(TC.getCompilerRTArgString(Args, Lib));
+          // Make sure the linker consider all object files from the static lib.
+          // This is necessary because instrumented dlls need access to all the
+          // interface exported by the static lib in the main executable.
+          CmdArgs.push_back(Args.MakeArgString(std::string("-wholearchive:") +
+              TC.getCompilerRT(Args, Lib)));
+        }
+      }
+    }
+
+    Args.AddAllArgValues(CmdArgs, options::OPT__SLASH_link);
+
+    if (Args.hasFlag(options::OPT_fopenmp, options::OPT_fopenmp_EQ,
+                    options::OPT_fno_openmp, false)) {
+      CmdArgs.push_back("-nodefaultlib:vcomp.lib");
+      CmdArgs.push_back("-nodefaultlib:vcompd.lib");
+      CmdArgs.push_back(Args.MakeArgString(std::string("-libpath:") +
+                                          TC.getDriver().Dir + "/../lib"));
+      switch (TC.getDriver().getOpenMPRuntime(Args)) {
+      case Driver::OMPRT_OMP:
+        CmdArgs.push_back("-defaultlib:libomp.lib");
+        break;
+      case Driver::OMPRT_IOMP5:
+        CmdArgs.push_back("-defaultlib:libiomp5md.lib");
+        break;
+      case Driver::OMPRT_GOMP:
+        break;
+      case Driver::OMPRT_Unknown:
+        // Already diagnosed.
+        break;
+      }
+    }
+
+    // Add compiler-rt lib in case if it was explicitly
+    // specified as an argument for --rtlib option.
+    if (!Args.hasArg(options::OPT_nostdlib)) {
+      AddRunTimeLibs(TC, TC.getDriver(), CmdArgs, Args);
+    }
+
+    // Add filenames, libraries, and other linker inputs.
+    for (const auto &Input : Inputs) {
+      if (Input.isFilename()) {
+        CmdArgs.push_back(Input.getFilename());
+        continue;
+      }
+
+      const Arg &A = Input.getInputArg();
+
+      // Render -l options differently for the MSVC linker.
+      if (A.getOption().matches(options::OPT_l)) {
+        StringRef Lib = A.getValue();
+        const char *LinkLibArg;
+        if (Lib.endswith(".lib"))
+          LinkLibArg = Args.MakeArgString(Lib);
+        else
+          LinkLibArg = Args.MakeArgString(Lib + ".lib");
+        CmdArgs.push_back(LinkLibArg);
+        continue;
+      }
+
+      // Otherwise, this is some other kind of linker input option like -Wl, -z,
+      // or -L. Render it, even if MSVC doesn't understand it.
+      A.renderAsInput(Args, CmdArgs);
+    }
+
+    TC.addProfileRTLibs(Args, CmdArgs);
+
+    std::vector<const char *> Environment;
+
+    // We need to special case some linker paths.  In the case of lld, we need to
+    // translate 'lld' into 'lld-link', and in the case of the regular msvc
+    // linker, we need to use a special search algorithm.
+    llvm::SmallString<128> linkPath;
+    StringRef Linker = Args.getLastArgValue(options::OPT_fuse_ld_EQ, "link");
+    if (Linker.equals_lower("lld"))
+      Linker = "lld-link";
+
+    if (Linker.equals_lower("link")) {
+      // If we're using the MSVC linker, it's not sufficient to just use link
+      // from the program PATH, because other environments like GnuWin32 install
+      // their own link.exe which may come first.
+      linkPath = FindVisualStudioExecutable(TC, "link.exe");
+
+  #ifdef USE_WIN32
+      // When cross-compiling with VS2017 or newer, link.exe expects to have
+      // its containing bin directory at the top of PATH, followed by the
+      // native target bin directory.
+      // e.g. when compiling for x86 on an x64 host, PATH should start with:
+      // /bin/HostX64/x86;/bin/HostX64/x64
+      // This doesn't attempt to handle ToolsetLayout::DevDivInternal.
+      if (TC.getIsVS2017OrNewer() &&
+          llvm::Triple(llvm::sys::getProcessTriple()).getArch() != TC.getArch()) {
+        auto HostArch = llvm::Triple(llvm::sys::getProcessTriple()).getArch();
+
+        auto EnvBlockWide =
+            std::unique_ptr<wchar_t[], decltype(&FreeEnvironmentStringsW)>(
+                GetEnvironmentStringsW(), FreeEnvironmentStringsW);
+        if (!EnvBlockWide)
+          goto SkipSettingEnvironment;
+
+        size_t EnvCount = 0;
+        size_t EnvBlockLen = 0;
+        while (EnvBlockWide[EnvBlockLen] != L'\0') {
+          ++EnvCount;
+          EnvBlockLen += std::wcslen(&EnvBlockWide[EnvBlockLen]) +
+                        1 /*string null-terminator*/;
+        }
+        ++EnvBlockLen; // add the block null-terminator
+
+        std::string EnvBlock;
+        if (!llvm::convertUTF16ToUTF8String(
+                llvm::ArrayRef<char>(reinterpret_cast<char *>(EnvBlockWide.get()),
+                                    EnvBlockLen * sizeof(EnvBlockWide[0])),
+                EnvBlock))
+          goto SkipSettingEnvironment;
+
+        Environment.reserve(EnvCount);
+
+        // Now loop over each string in the block and copy them into the
+        // environment vector, adjusting the PATH variable as needed when we
+        // find it.
+        for (const char *Cursor = EnvBlock.data(); *Cursor != '\0';) {
+          llvm::StringRef EnvVar(Cursor);
+          if (EnvVar.startswith_lower("path=")) {
+            using SubDirectoryType = toolchains::MSVCToolChain::SubDirectoryType;
+            constexpr size_t PrefixLen = 5; // strlen("path=")
+            Environment.push_back(Args.MakeArgString(
+                EnvVar.substr(0, PrefixLen) +
+                TC.getSubDirectoryPath(SubDirectoryType::Bin) +
+                llvm::Twine(llvm::sys::EnvPathSeparator) +
+                TC.getSubDirectoryPath(SubDirectoryType::Bin, HostArch) +
+                (EnvVar.size() > PrefixLen
+                    ? llvm::Twine(llvm::sys::EnvPathSeparator) +
+                          EnvVar.substr(PrefixLen)
+                    : "")));
+          } else {
+            Environment.push_back(Args.MakeArgString(EnvVar));
+          }
+          Cursor += EnvVar.size() + 1 /*null-terminator*/;
+        }
+      }
+    SkipSettingEnvironment:;
+  #endif
+    } else {
+      linkPath = TC.GetProgramPath(Linker.str().c_str());
+    }
+
+    auto LinkCmd = llvm::make_unique<Command>(
+        JA, *this, Args.MakeArgString(linkPath), CmdArgs, Inputs);
+    if (!Environment.empty())
+      LinkCmd->setEnvironment(Environment);
+    C.addCommand(std::move(LinkCmd));
+  }
 }
 
 void visualstudio::Compiler::ConstructJob(Compilation &C, const JobAction &JA,
@@ -691,10 +696,9 @@ MSVCToolChain::MSVCToolChain(const Driver &D, const llvm::Triple &Triple,
 }
 
 Tool *MSVCToolChain::buildLinker() const {
-  //if (VCToolChainPath.empty())
-  //  getDriver().Diag(clang::diag::warn_drv_msvc_not_found);
-  //return new tools::visualstudio::Linker(*this);
-  return new tools::gnutools::Linker(*this);
+  if (VCToolChainPath.empty())
+    getDriver().Diag(clang::diag::warn_drv_msvc_not_found);
+  return new tools::visualstudio::Linker(*this);
 }
 
 Tool *MSVCToolChain::buildAssembler() const {

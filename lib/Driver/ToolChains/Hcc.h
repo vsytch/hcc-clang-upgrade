@@ -17,6 +17,7 @@
 #include "clang/Driver/Tool.h"
 #include "llvm/Support/Compiler.h"
 #include "Gnu.h"
+#include "MSVC.h"
 #include "Linux.h"
 #include <set>
 #include <vector>
@@ -81,7 +82,7 @@ public:
 // \brief C++AMP linker.
 class LLVM_LIBRARY_VISIBILITY CXXAMPLink : public gnutools::Linker {
 public:
-  CXXAMPLink(const ToolChain &TC) : Linker(TC, "clamp-link") {}
+  CXXAMPLink(const ToolChain &TC) : gnutools::Linker(TC, "clamp-link") {}
 
   void ConstructJob(Compilation &C, const JobAction &JA,
                     const InputInfo &Output,
