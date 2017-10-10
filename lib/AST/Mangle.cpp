@@ -118,6 +118,7 @@ bool MangleContext::shouldMangleDeclName(const NamedDecl *D) {
 void MangleContext::mangleName(const NamedDecl *D, raw_ostream &Out) {
   // Any decl can be declared with __asm("foo") on it, and this takes precedence
   // over all other naming in the .o file.
+  static ItaniumMangleContextImpl imci = ItaniumMangleContextImpl(getASTContext(), getASTContext().getDiagnostics());
   if (const AsmLabelAttr *ALA = D->getAttr<AsmLabelAttr>()) {
     // If we have an asm name, then we use it as the mangling.
 
@@ -145,11 +146,11 @@ void MangleContext::mangleName(const NamedDecl *D, raw_ostream &Out) {
       mangleObjCMethodName(OMD, Out);
     else
     {
-    if (D->getIdentifier() &&
-      (D->getIdentifier()->getName().str() == std::string("__cxxamp_trampoline")))
-      ItaniumMangleContextImpl(getASTContext(), ASTContext.getDiagnostics()).mangleCXXName(D, Out);
-    else
-      mangleCXXName(D, Out);
+      if (D->getIdentifier() &&
+        (D->getIdentifier()->getName().str() == std::string("__cxxamp_trampoline")))
+        imci.mangleCXXName(D, Out);
+      else
+        mangleCXXName(D, Out);
     }
     return;
   }
