@@ -46,10 +46,10 @@ HCCInstallationDetector::HCCInstallationDetector(const Driver &D, const llvm::op
   if (Args.hasArg(options::OPT_hcc_path_EQ))
     HCCPathCandidates.push_back(
       Args.getLastArgValue(options::OPT_hcc_path_EQ));
-    
-  HCCPathCandidates.push_back(InstallPath + "/..");
+
   HCCPathCandidates.push_back(BinPath + "/..");
   HCCPathCandidates.push_back(BinPath + "/../..");
+  HCCPathCandidates.push_back(InstallPath + "/..");
 
   for (const auto &HCCPath: HCCPathCandidates) {
     if (HCCPath.empty() ||
